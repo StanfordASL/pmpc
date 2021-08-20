@@ -1,0 +1,6 @@
+[submodule "osqp"]
+	path = osqp
+	url = ./osqp
+[submodule "pybind11"]
+	path = pybind11
+	url = ./pybind11
