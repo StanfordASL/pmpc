@@ -33,7 +33,7 @@ if False and __name__ == "__main__" and len(sys.argv) >= 2 and sys.argv[1] == "i
         using Pkg
         Pkg.develop(PackageSpec(path="%s"))
         """ % os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "resources/PMPC.jl"
+            os.path.abspath(os.path.dirname(__file__)), "PMPC.jl"
         )
         jl.eval(install_PMPC)
     except Exception as e:
