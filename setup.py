@@ -13,7 +13,12 @@ setup(
 )
 
 # custom julia installation script for the PMPC module #######
-if False and __name__ == "__main__" and len(sys.argv) >= 2 and sys.argv[1] == "install":
+if (
+    True
+    and __name__ == "__main__"
+    and len(sys.argv) >= 2
+    and sys.argv[1] == "install"
+):
     import julia
 
     try:

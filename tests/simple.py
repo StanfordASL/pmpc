@@ -1,0 +1,65 @@
+import pickle, sys, time, pdb, os, sys
+
+import matplotlib.pyplot as plt, numpy as np, scipy.sparse as sp
+import cvxpy as cp, scipy.sparse.linalg
+
+import pmpc
+
+dirname = os.path.abspath(os.path.dirname(__file__))
+sys.path.append(os.path.join(dirname, "..", ".."))
+from dubins_car import f_np as f_fn, fx_np as fx_fn, fu_np as fu_fn
+
+
+def f_fx_fu_fn(X_prev, U_prev):
+    x, u, p = X_prev, U_prev, np.array([0.3])
+    return f_fn(x, u, p), fx_fn(x, u, p), fu_fn(x, u, p)
+
+
+if __name__ == "__main__":
+    M, N, xdim, udim = 1, 30, 4, 2
+
+    Q = np.tile(np.eye(xdim), (M, N, 1, 1))
+    R = np.tile(1e-2 * np.eye(udim), (M, N, 1, 1))
+    x0 = np.tile(np.ones(xdim), (M, 1))
+    X_ref, U_ref = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
+    X_prev, U_prev = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
+
+    X, U, data = pmpc.scp_solve(
+        f_fx_fu_fn,
+        Q,
+        R,
+        x0,
+        X_ref=X_ref,
+        U_ref=U_ref,
+        X_prev=X_prev,
+        U_prev=U_prev,
+        max_iters=1,
+        verbose=True,
+    )
+    X, U, data = pmpc.scp_solve(
+        f_fx_fu_fn,
+        Q,
+        R,
+        x0,
+        X_ref=X_ref,
+        U_ref=U_ref,
+        X_prev=X_prev,
+        U_prev=U_prev,
+        max_iters=100,
+        verbose=True,
+    )
+    X, U = X[0], U[0]
+
+    plt.figure()
+    for r in range(xdim):
+        plt.plot(X[:, r], label="$x_%d$" % (r + 1))
+    plt.legend()
+    plt.tight_layout()
+
+    plt.figure()
+    for r in range(udim):
+        plt.plot(U[:, r], label="$u_%d$" % (r + 1))
+    plt.legend()
+    plt.tight_layout()
+
+    plt.show()

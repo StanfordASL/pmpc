@@ -63,7 +63,6 @@ if __name__ == "__main__":
             ]
         )
         p.wait()
-        pdb.set_trace()
     else:
         print("Good ECOS")
 
