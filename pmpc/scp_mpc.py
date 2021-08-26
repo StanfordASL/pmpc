@@ -2,10 +2,14 @@
 import math, os, pdb, time
 
 import matplotlib.pyplot as plt, numpy as np
+from tqdm import tqdm
 
+from . import utils as utl
 from . import julia_utils as ju
 
 jl = None
+
+print_fn = lambda *args, **kwargs: print(*args, **kwargs)
 
 
 def ensure_julia():
@@ -17,7 +21,10 @@ def ensure_julia():
 ##$#############################################################################
 ##^# affine solve using julia ##################################################
 def atleast_nd(x, n):
-    return x.reshape((1,) * max(n - x.ndim, 0) + x.shape)
+    if x is None:
+        return None
+    else:
+        return x.reshape((1,) * max(n - x.ndim, 0) + x.shape)
 
 
 def aff_solve(
@@ -39,7 +46,7 @@ def aff_solve(
     x_u,
     u_l,
     u_u,
-    method="admm",
+    method="lqp",
     solver_settings={},
 ):
     ensure_julia()
@@ -88,32 +95,40 @@ def aff_solve(
 def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
     if cost_fn is not None:
         Cxx, cx, Cuu, cu = cost_fn(X_prev, U_prev)
+
         # augment the state cost #############
-        Qp = (Q + Cxx) if Cxx is not None else Q
-        xdim = Qp.shape[-1]
-        ev = np.linalg.eigvals(Qp)
-        reg = (
-            -np.minimum(np.min(ev, -1), 0.0)[..., None, None] + 1e-5
-        ) * np.eye(xdim)
-        Qp = Qp + reg
+        if Cxx is not None:
+            Qp = Q + Cxx
+            xdim = Qp.shape[-1]
+            ev = np.linalg.eigvals(Qp)
+            reg = (
+                -np.minimum(np.min(ev, -1), 0.0)[..., None, None] + 1e-5
+            ) * np.eye(xdim)
+            Qp = Qp + reg
+            Q = Qp
+        else:
+            Qp = Q
         if cx is not None:
             X_ref = np.linalg.solve(Qp, Q @ X_ref[..., None] - cx[..., None])[
                 ..., 0
             ]
-        Q = Qp
+
         # augment the control cost ###########
-        Rp = (R + Cuu) if Cuu is not None else R
-        udim = Rp.shape[-1]
-        ev = np.linalg.eigvals(Rp)
-        reg = (
-            -np.minimum(np.min(ev, -1), 0.0)[..., None, None] + 1e-5
-        ) * np.eye(udim)
-        Rp = Rp + reg
+        if Cuu is not None:
+            Rp = (R + Cuu) if Cuu is not None else R
+            udim = Rp.shape[-1]
+            ev = np.linalg.eigvals(Rp)
+            reg = (
+                -np.minimum(np.min(ev, -1), 0.0)[..., None, None] + 1e-5
+            ) * np.eye(udim)
+            Rp = Rp + reg
+            R = Rp
+        else:
+            Rp = R
         if cu is not None:
             U_ref = np.linalg.solve(Rp, R @ U_ref[..., None] - cu[..., None])[
                 ..., 0
             ]
-        R = Rp
     return Q, R, X_ref, U_ref
 
 
@@ -121,19 +136,6 @@ def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
 ##^# SCP MPC ###################################################################
 norm = lambda x, p=None, dim=None: np.linalg.norm(x, p, dim)
 bmv = lambda A, x: (A @ x[..., None])[..., 0]
-
-SCP_TABLE_HEADER = (
-    ("+" + "-" * 6)
-    + ("+" + "-" * 11) * 5
-    + "+"
-    + "\n"
-    + "|  it. |   elaps.  |    obj.   |   resid.  | rho_res_x | rho_res_u |"
-    + "\n"
-    + ("+" + "-" * 6)
-    + ("+" + "-" * 11) * 5
-    + "+"
-)
-SCP_TABLE_FOOTER = ("+" + "-" * 6) + ("+" + "-" * 11) * 5 + "+"
 
 
 def scp_solve(
@@ -149,7 +151,7 @@ def scp_solve(
     x_u=None,
     u_l=None,
     u_u=None,
-    verbose=True,
+    verbose=False,
     debug=False,
     max_iters=100,
     time_limit=1000.0,
@@ -159,16 +161,24 @@ def scp_solve(
     slew_rate=0.0,
     u_slew=None,
     cost_fn=None,
-    method="admm",
+    method="lqp",
     solver_settings={},
     solver_state=None,
-    **kwargs,
 ):
     t_elaps = time.time()
 
     # create variables and reference trajectories ##############################
     Q, R = np.copy(Q), np.copy(R)
-    assert x0.ndim == 2 and R.ndim == 4 and Q.ndim == 4
+    if x0.ndim == 1: # single particle case
+        assert x0.ndim == 1 and R.ndim == 3 and Q.ndim == 3
+        args = x0, Q, R, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u
+        dims = [2, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3]
+        args = [atleast_nd(z, dim) for (z, dim) in zip(args, dims)]
+        x0, Q, R, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u = args
+        single_particle_problem_flag = True
+    else: # multiple particle cases
+        assert x0.ndim == 2 and R.ndim == 4 and Q.ndim == 4
+        single_particle_problem_flag = False
     M, N, xdim, udim = Q.shape[:3] + R.shape[-1:]
 
     X_ref = np.zeros((M, N, xdim)) if X_ref is None else X_ref
@@ -183,22 +193,18 @@ def scp_solve(
     ]
     data = dict(solver_data=[], hist=[])
 
+    field_names = ["it", "elaps", "obj", "resid", "rho_res_x", "rho_res_u"]
+    fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
+    tp = utl.TablePrinter(field_names, fmts=fmts)
+
     # solve sequentially, linearizing ##########################################
     if verbose:
-        # print(("+" + "-" * 6) + ("+" + "-" * 11) * 5 + "+")
-        # print(
-        #    "|  it. |   elaps.  |    obj.   |   resid.  |"
-        #    + " rho_res_x | rho_res_u |"
-        # )
-        # print(("+" + "-" * 6) + ("+" + "-" * 11) * 5 + "+")
-        print(SCP_TABLE_HEADER)
+        print_fn(tp.make_header())
     it = 0
     X, U, solver_data = None, None, None
     while it < max_iters:
         X_ = np.concatenate([x0[..., None, :], X_prev[..., :-1, :]], -2)
-        t = time.time()
         f, fx, fu = f_fx_fu_fn(X_, U_prev)
-        # print("Linearization takes %e s" % (time.time() - t))
         f = f.reshape((M, N, xdim))
         fx = fx.reshape((M, N, xdim, xdim))
         fu = fu.reshape((M, N, xdim, udim))
@@ -206,13 +212,6 @@ def scp_solve(
         Q_, R_, X_ref_, U_ref_ = augment_cost(
             cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref
         )
-        # t = time.time()
-        # if debug:
-        #    print("f.norm() =  %9.4e" % norm(f.reshape(-1)))
-        #    print("fx.norm() = %9.4e" % norm(fx.reshape(-1)))
-        #    print("fu.norm() = %9.4e" % norm(fu.reshape(-1)))
-        #    if norm(fx.reshape(-1)) > 1e2:
-        #        print(np.mean(fx[0], -3))
         t_aff_solve = time.time()
         X, U, solver_data = aff_solve(
             f,
@@ -241,7 +240,6 @@ def scp_solve(
         X, U = X.reshape((M, N + 1, xdim)), U.reshape((M, N, udim))
 
         if debug:
-            # plt.figure(3400 + it)
             plt.figure(345789453)
             plt.clf()
             for i in range(X.shape[-1]):
@@ -250,7 +248,6 @@ def scp_solve(
             plt.legend()
             plt.tight_layout()
 
-            # plt.figure(6400 + it)
             plt.figure(4389423733)
             plt.clf()
             for i in range(U.shape[-1]):
@@ -261,10 +258,10 @@ def scp_solve(
 
             plt.draw_all()
             plt.pause(1e-2)
-        # print("Solving took =", time.time() - t)
+
         if np.any(np.isnan(X)) or np.any(np.isnan(U)):
             if verbose:
-                print("Solver failed...")
+                print_fn("Solver failed...")
             return None, None, None
         X_ = X[..., 1:, :]
         dX, dU = X_ - X_prev, U - U_prev
@@ -277,17 +274,9 @@ def scp_solve(
         t_run = time.time() - t_elaps
         vals = (it + 1, t_run, obj, max_res, rho_res_x, rho_res_u)
         if verbose:
-            print("| %04d | %6.3e | %6.3e | %6.3e | %6.3e | %6.3e |" % vals)
+            print_fn(tp.make_values(vals))
         data["solver_data"].append(solver_data)
-        data["hist"].append(
-            {
-                k: val
-                for (k, val) in zip(
-                    ["it", "t_run", "obj", "max_res", "rho_res_x", "rho_res_u"],
-                    vals,
-                )
-            }
-        )
+        data["hist"].append({k: val for (k, val) in zip(field_names, vals)})
         data.setdefault("t_aff_solve", [])
         data["t_aff_solve"].append(t_aff_solve)
 
@@ -298,50 +287,56 @@ def scp_solve(
             break
 
     if verbose:
-        # print(("+" + "-" * 6) + ("+" + "-" * 11) * 5 + "+")
-        print(SCP_TABLE_FOOTER)
-    if verbose and max_res > 1e-3:
-        print("#" * 76)
-        print(
-            "Bad solution found, the solution is approximate to a "
-            + "residual: %5.3e" % max_res
-        )
-        print("#" * 76)
-    return X.reshape((M, N + 1, xdim)), U.reshape((M, N, udim)), data
+        print_fn(tp.make_footer())
+    if verbose and max_res > 1e-2:
+        msg = "Bad solution found, the solution is approximate to a residual:"
+        print_fn("#" * 80)
+        print_fn(msg, "%9.4e" % max_res)
+        print_fn("#" * 80)
+    if not single_particle_problem_flag:
+        return X.reshape((M, N + 1, xdim)), U.reshape((M, N, udim)), data
+    else:
+        return X.reshape((N + 1, xdim)), U.reshape((N, udim)), data
 
 
 solve = scp_solve
 ##$#############################################################################
 ##^# tuning hyperparameters ####################################################
-def tune_scp(*args, **kwargs):
+def tune_scp(
+    *args, sample_nb=14, rho_rng=(-3, 3), solve_fn=scp_solve, **kwargs
+):
     rho_res_ratio = kwargs.get("rho_res_ratio", 1e-1)
 
-    rho_res_list = kwargs.get("rho_rng", np.logspace(-3, 3, 14))
-    max_res_list = []
-    for rho_res in rho_res_list:
+    rho_res_list = kwargs.get("rho_rng", np.logspace(*rho_rng, sample_nb))
+    res_list = []
+    for rho_res in tqdm(rho_res_list):
         rho_res_x, rho_res_u = rho_res, rho_res * rho_res_ratio
         kwargs["rho_res_x"], kwargs["rho_res_u"] = rho_res_x, rho_res_u
-        X, U, data = scp_solve(*args, **kwargs)
-        max_res_list.append(
-            [z["max_res"] for z in data["hist"]] if data is not None else [1e1]
-        )
-
-    plt.figure(23423345)
-    plt.clf()
-    # for (i, max_res) in enumerate(max_res_list):
-    #    plt.semilogy(max_res, label="%5.1e" % rho_res_list[i])
-    # plt.legend()
-    plt.loglog(rho_res_list, [z[-1] for z in max_res_list])
+        kwargs["verbose"] = False
+        X, U, data = solve_fn(*args, **kwargs)
+        inf = 1e1
+        res_list.append(inf if data is None else data["hist"][-1]["resid"])
+    plt.figure()
+    plt.loglog(rho_res_list, res_list)
+    plt.ylabel("final residual")
+    plt.xlabel("rho_res_x")
+    plt.title("rho_res_u = rho_res_x * %6.1e" % rho_res_ratio)
+    plt.tight_layout()
+    plt.grid(b=True, which="major")
+    plt.grid(b=True, which="minor")
     plt.draw_all()
-    plt.pause(1e-2)
-    pdb.set_trace()
+    plt.pause(1e-1)
 
-    return
+    rho_res_x = rho_res_list[np.argmin(res_list)]
+    rho_res_u = rho_res_ratio * rho_res_x
+    return rho_res_x, rho_res_u
 
 
 ##$#############################################################################
 ##^# accelerated SCP ###########################################################
-momentum_update = lambda zk, zkm1, it: zk + it / (it + 3) * (zk - zkm1)
+#momentum_update = lambda zk, zkm1, it: zk + it / (it + 3) * (zk - zkm1)
+alf = 1.6
+momentum_update = lambda zk, zkm1, it: alf * zk + (1.0 - alf) * zkm1
 
 
 def accelerated_scp_solve(
@@ -367,10 +362,9 @@ def accelerated_scp_solve(
     slew_rate=0.0,
     u_slew=None,
     cost_fn=None,
-    method="admm",
+    method="lqp",
     solver_settings={},
     solver_state=None,
-    **kwargs,
 ):
     # initialize the SCP variables and reference trajectory ##
     assert x0.ndim == 2 and R.ndim == 4 and Q.ndim == 4
@@ -386,10 +380,14 @@ def accelerated_scp_solve(
     X_prev_2hist = [X_prev, X_prev]
     U_prev_2hist = [U_prev, U_prev]
 
+    field_names = ["it", "elaps", "obj", "resid", "rho_res_x", "rho_res_u"]
+    fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
+    tp = utl.TablePrinter(field_names, fmts=fmts)
+
     t_start = time.time()
     data = {}
     if verbose:
-        print(SCP_TABLE_HEADER)
+        print_fn(tp.make_header())
     for it in range(max_iters):
         X_prev = momentum_update(X_prev_2hist[-1], X_prev_2hist[-2], it)
         U_prev = momentum_update(U_prev_2hist[-1], U_prev_2hist[-2], it)
@@ -420,7 +418,6 @@ def accelerated_scp_solve(
             method=method,
             solver_settings=solver_settings,
             solver_state=solver_state,
-            **kwargs,
         )
 
         X_prev_2hist = [X_prev_2hist[-1], X[..., 1:, :]]
@@ -435,18 +432,15 @@ def accelerated_scp_solve(
         if verbose:
             vals = [it + 1, time.time() - t_start] + [
                 data_["hist"][-1][k]
-                for k in ["obj", "max_res", "rho_res_x", "rho_res_u"]
+                for k in ["obj", "resid", "rho_res_x", "rho_res_u"]
             ]
-            print(
-                "| %04d | %6.3e | %6.3e | %6.3e | %6.3e | %6.3e |" % tuple(vals)
-            )
-
-        if data["hist"][-1]["max_res"] < res_tol:
+            print_fn(tp.make_values(vals))
+        if data["hist"][-1]["resid"] < res_tol:
             break
         if (it + 2) / (it + 1) * (time.time() - t_start) > time_limit:
             break
     if verbose:
-        print(SCP_TABLE_FOOTER)
+        print_fn(tp.make_footer())
     return X, U, data
 
 

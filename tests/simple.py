@@ -3,6 +3,8 @@ import pickle, sys, time, pdb, os, sys
 import matplotlib.pyplot as plt, numpy as np, scipy.sparse as sp
 import cvxpy as cp, scipy.sparse.linalg
 
+dirname = os.path.abspath(os.path.dirname(__file__))
+sys.path = [os.path.join(dirname, "..")] + sys.path
 import pmpc
 
 dirname = os.path.abspath(os.path.dirname(__file__))
@@ -18,37 +20,32 @@ def f_fx_fu_fn(X_prev, U_prev):
 if __name__ == "__main__":
     M, N, xdim, udim = 1, 30, 4, 2
 
-    Q = np.tile(np.eye(xdim), (M, N, 1, 1))
-    R = np.tile(1e-2 * np.eye(udim), (M, N, 1, 1))
-    x0 = np.tile(np.ones(xdim), (M, 1))
-    X_ref, U_ref = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
-    X_prev, U_prev = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
+    #Q = np.tile(np.eye(xdim), (M, N, 1, 1))
+    #R = np.tile(1e-2 * np.eye(udim), (M, N, 1, 1))
+    #x0 = np.tile(np.ones(xdim), (M, 1))
+    #X_ref, U_ref = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
+    #X_prev, U_prev = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
+    #u_l, u_u = -1 * np.ones((M, N, udim)), 1 * np.ones((M, N, udim))
 
-    X, U, data = pmpc.scp_solve(
-        f_fx_fu_fn,
-        Q,
-        R,
-        x0,
-        X_ref=X_ref,
-        U_ref=U_ref,
-        X_prev=X_prev,
-        U_prev=U_prev,
-        max_iters=1,
-        verbose=True,
-    )
-    X, U, data = pmpc.scp_solve(
-        f_fx_fu_fn,
-        Q,
-        R,
-        x0,
-        X_ref=X_ref,
-        U_ref=U_ref,
-        X_prev=X_prev,
-        U_prev=U_prev,
-        max_iters=100,
-        verbose=True,
-    )
-    X, U = X[0], U[0]
+    Q = np.tile(np.eye(xdim), (N, 1, 1))
+    R = np.tile(1e-2 * np.eye(udim), (N, 1, 1))
+    x0 = np.tile(np.ones(xdim), (1,))
+    X_ref, U_ref = np.zeros((N, xdim)), np.zeros((N, udim))
+    X_prev, U_prev = np.zeros((N, xdim)), np.zeros((N, udim))
+    u_l, u_u = -1 * np.ones((N, udim)), 1 * np.ones((N, udim))
+
+    opts = dict(verbose=True, u_l=u_l, u_u=u_u)
+    args = (f_fx_fu_fn, Q, R, x0, X_ref, U_ref, X_prev, U_prev)
+
+    ret = pmpc.tune_scp(*args, **opts)
+    opts["rho_res_x"], opts["rho_res_u"] = ret
+    X, U, data = pmpc.solve(*args, max_iters=100, **opts)
+    #X, U = X[0], U[0]
+
+    #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)
+    #opts["rho_res_x"], opts["rho_res_u"] = ret
+    #X, U, data = pmpc.accelerated_scp_solve(*args, max_iters=100, **opts)
+    #X, U = X[0], U[0]
 
     plt.figure()
     for r in range(xdim):
@@ -62,4 +59,6 @@ if __name__ == "__main__":
     plt.legend()
     plt.tight_layout()
 
-    plt.show()
+    plt.draw_all()
+    plt.pause(1e-1)
+    pdb.set_trace()
