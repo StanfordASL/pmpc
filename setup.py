@@ -1,6 +1,7 @@
 import os, sys
 from setuptools import setup, find_packages
 from subprocess import Popen
+from shutil import rmtree
 
 # perform setup ##############################################
 setup(
@@ -12,13 +13,11 @@ setup(
     include_package_data=True,
 )
 
+# custom rules below # #########################################################
+action = None if len(sys.argv) < 2 else sys.argv[1]
+
 # custom julia installation script for the PMPC module #######
-if (
-    True
-    and __name__ == "__main__"
-    and len(sys.argv) >= 2
-    and sys.argv[1] == "install"
-):
+if __name__ == "__main__" and action == "install":
     import julia
 
     try:
@@ -51,3 +50,10 @@ if (
         )
         p = Popen(["python3", path])
         p.wait()
+
+if __name__ == "__main__" and action == "clean":
+    dirname = os.path.abspath(os.path.dirname(__file__))
+    flist = ["build", "dist", "pmpc.egg-info"]
+    for fname in flist:
+        if os.path.isdir(fname):
+            rmtree(os.path.join(dirname, fname))

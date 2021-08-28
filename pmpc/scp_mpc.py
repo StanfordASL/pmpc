@@ -1,5 +1,6 @@
 ##^# library imports ###########################################################
 import math, os, pdb, time
+from copy import copy
 
 import matplotlib.pyplot as plt, numpy as np
 from tqdm import tqdm
@@ -14,8 +15,46 @@ print_fn = lambda *args, **kwargs: print(*args, **kwargs)
 
 def ensure_julia():
     global jl
+
     if jl is None:
+        #from julia import Julia
+        #Julia(sysimage="sys.so")
+        #print("using sysimaage")
+        #from julia import Main as jl_
+        #jl = jl_
+        #jl.using("PMPC")
+
+        #from julia.api import LibJulia
+
+        #api = LibJulia.load()
+        #api.init_julia(["--trace-compile=out.jl"])
+
+        #from julia import Main as jl_
+        #jl = jl_
+        ##jl.using("PackageCompiler")
+        #jl.using("PMPC")
         jl = ju.load_julia()
+
+
+def load_sysimage(path):
+    from julia import Julia
+
+    global jl
+    jl = Julia(sysimage=path)
+
+    from julia import Main as jl_
+
+    jl = jl_
+    jl.using("PMPC")
+
+
+def make_sysimage(path):
+    ensure_julia()
+    # jl.using("PackageCompiler")
+    jl.eval(
+        'create_sysimage(:PMPC, sysimage_path="%s", precompile_execution_file="out.jl")'
+        % path
+    )
 
 
 ##$#############################################################################
@@ -75,6 +114,13 @@ def aff_solve(
         solve_fn = jl.lsocp_solve
     else:
         raise ValueError("No method [%s] found" % method)
+
+    solver_settings = copy(solver_settings)
+    if u_slew is not None:
+        solver_settings["slew_um1"] = u_slew
+    if slew_rate is not None:
+        solver_settings["slew_rho"] = slew_rate
+
     ret = solve_fn(
         *args,
         rho_res_x=rho_res_x,
@@ -169,14 +215,14 @@ def scp_solve(
 
     # create variables and reference trajectories ##############################
     Q, R = np.copy(Q), np.copy(R)
-    if x0.ndim == 1: # single particle case
+    if x0.ndim == 1:  # single particle case
         assert x0.ndim == 1 and R.ndim == 3 and Q.ndim == 3
-        args = x0, Q, R, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u
-        dims = [2, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3]
+        args = Q, R, x0, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u
+        dims = [4, 4, 2, 3, 3, 3, 3, 3, 3, 3, 3]
         args = [atleast_nd(z, dim) for (z, dim) in zip(args, dims)]
-        x0, Q, R, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u = args
+        Q, R, x0, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u = args
         single_particle_problem_flag = True
-    else: # multiple particle cases
+    else:  # multiple particle cases
         assert x0.ndim == 2 and R.ndim == 4 and Q.ndim == 4
         single_particle_problem_flag = False
     M, N, xdim, udim = Q.shape[:3] + R.shape[-1:]
@@ -334,7 +380,7 @@ def tune_scp(
 
 ##$#############################################################################
 ##^# accelerated SCP ###########################################################
-#momentum_update = lambda zk, zkm1, it: zk + it / (it + 3) * (zk - zkm1)
+# momentum_update = lambda zk, zkm1, it: zk + it / (it + 3) * (zk - zkm1)
 alf = 1.6
 momentum_update = lambda zk, zkm1, it: alf * zk + (1.0 - alf) * zkm1
 

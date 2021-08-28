@@ -9,7 +9,11 @@ def load_julia(verbose=False):
     t = time.time()
     try:
         import julia
-        julia.Julia()
+        path = os.path.abspath(os.path.expanduser("~/.local/lib/sys_pmpc.so"))
+        if os.path.isfile(path):
+            julia.Julia(sysimage=path)
+        else:
+            julia.Julia()
         recompiled = False
     except Exception as e:
         print(e)
@@ -21,7 +25,6 @@ def load_julia(verbose=False):
         recompiled = True
     from julia import Main as jl
 
-    # import camelid core julia libraries
     jl.using("PMPC")
 
     if verbose:
