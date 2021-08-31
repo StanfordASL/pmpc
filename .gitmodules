@@ -1,9 +1,3 @@
-[submodule "osqp"]
-	path = osqp
-	url = ./osqp
-[submodule "pybind11"]
-	path = pybind11
-	url = ./pybind11
 [submodule "PMPC.jl"]
 	path = PMPC.jl
 	url = git@github.com:StanfordASL/PMPC.jl.git
