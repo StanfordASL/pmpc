@@ -17,22 +17,22 @@ def ensure_julia():
     global jl
 
     if jl is None:
-        #from julia import Julia
-        #Julia(sysimage="sys.so")
-        #print("using sysimaage")
-        #from julia import Main as jl_
-        #jl = jl_
-        #jl.using("PMPC")
+        # from julia import Julia
+        # Julia(sysimage="sys.so")
+        # print("using sysimaage")
+        # from julia import Main as jl_
+        # jl = jl_
+        # jl.using("PMPC")
 
-        #from julia.api import LibJulia
+        # from julia.api import LibJulia
 
-        #api = LibJulia.load()
-        #api.init_julia(["--trace-compile=out.jl"])
+        # api = LibJulia.load()
+        # api.init_julia(["--trace-compile=out.jl"])
 
-        #from julia import Main as jl_
-        #jl = jl_
+        # from julia import Main as jl_
+        # jl = jl_
         ##jl.using("PackageCompiler")
-        #jl.using("PMPC")
+        # jl.using("PMPC")
         jl = ju.load_julia()
 
 
@@ -140,42 +140,16 @@ def aff_solve(
 ##^# cost augmentation #########################################################
 def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
     if cost_fn is not None:
-        Cxx, cx, Cuu, cu = cost_fn(X_prev, U_prev)
+        cx, cu = cost_fn(X_prev, U_prev)
 
         # augment the state cost #############
-        if Cxx is not None:
-            Qp = Q + Cxx
-            xdim = Qp.shape[-1]
-            ev = np.linalg.eigvals(Qp)
-            reg = (
-                -np.minimum(np.min(ev, -1), 0.0)[..., None, None] + 1e-5
-            ) * np.eye(xdim)
-            Qp = Qp + reg
-            Q = Qp
-        else:
-            Qp = Q
         if cx is not None:
-            X_ref = np.linalg.solve(Qp, Q @ X_ref[..., None] - cx[..., None])[
-                ..., 0
-            ]
+            X_ref = X_ref - np.linalg.solve(Q, cx[..., None])[..., 0]
 
         # augment the control cost ###########
-        if Cuu is not None:
-            Rp = (R + Cuu) if Cuu is not None else R
-            udim = Rp.shape[-1]
-            ev = np.linalg.eigvals(Rp)
-            reg = (
-                -np.minimum(np.min(ev, -1), 0.0)[..., None, None] + 1e-5
-            ) * np.eye(udim)
-            Rp = Rp + reg
-            R = Rp
-        else:
-            Rp = R
         if cu is not None:
-            U_ref = np.linalg.solve(Rp, R @ U_ref[..., None] - cu[..., None])[
-                ..., 0
-            ]
-    return Q, R, X_ref, U_ref
+            U_ref = U_ref - np.linalg.solve(R, cu[..., None])[..., 0]
+    return X_ref, U_ref
 
 
 ##$#############################################################################
@@ -255,7 +229,7 @@ def scp_solve(
         fx = fx.reshape((M, N, xdim, xdim))
         fu = fu.reshape((M, N, xdim, udim))
 
-        Q_, R_, X_ref_, U_ref_ = augment_cost(
+        X_ref_, U_ref_ = augment_cost(
             cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref
         )
         t_aff_solve = time.time()
@@ -266,8 +240,8 @@ def scp_solve(
             x0,
             X_prev,
             U_prev,
-            Q_,
-            R_,
+            Q,
+            R,
             X_ref_,
             U_ref_,
             rho_res_x,
