@@ -9,11 +9,12 @@ def load_julia(verbose=False):
     t = time.time()
     try:
         import julia
-        path = os.path.abspath(os.path.expanduser("~/.local/lib/sys_pmpc.so"))
-        if os.path.isfile(path):
-            julia.Julia(sysimage=path)
-        else:
-            julia.Julia()
+        #path = os.path.abspath(os.path.expanduser("~/.local/lib/sys_pmpc.so"))
+        #if os.path.isfile(path):
+        #    julia.Julia(sysimage=path)
+        #else:
+        #    julia.Julia()
+        julia.Julia()
         recompiled = False
     except Exception as e:
         print(e)
