@@ -13,6 +13,18 @@ jl = None
 print_fn = lambda *args, **kwargs: print(*args, **kwargs)
 
 
+def minimize_AA(Fs, norm=2):
+    import cvxpy as cp
+
+    F = np.stack([f.reshape(-1) for f in Fs], -1)
+    alf = cp.Variable(F.shape[-1])
+    #obj = cp.sum(cp.norm(F @ cp.diag(alf), norm, -2))
+    obj = cp.sum_squares(F @ cp.diag(alf))
+    prob = cp.Problem(cp.Minimize(obj), [cp.sum(alf) == 1])
+    prob.solve(cp.GUROBI)
+    return alf.value
+
+
 def ensure_julia():
     global jl
 
@@ -77,8 +89,8 @@ def aff_solve(
     R,
     X_ref,
     U_ref,
-    rho_res_x,
-    rho_res_u,
+    reg_x,
+    reg_u,
     slew_rate,
     u_slew,
     x_l,
@@ -119,12 +131,12 @@ def aff_solve(
     if u_slew is not None:
         solver_settings["slew_um1"] = u_slew
     if slew_rate is not None:
-        solver_settings["slew_rho"] = slew_rate
+        solver_settings["slew_reg"] = slew_rate
 
     ret = solve_fn(
         *args,
-        rho_res_x=rho_res_x,
-        rho_res_u=rho_res_u,
+        reg_x=reg_x,
+        reg_u=reg_u,
         lx=x_l,
         ux=x_u,
         lu=u_l,
@@ -157,6 +169,12 @@ def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
 norm = lambda x, p=None, dim=None: np.linalg.norm(x, p, dim)
 bmv = lambda A, x: (A @ x[..., None])[..., 0]
 
+XU2vec = lambda X, U: np.concatenate([X.reshape(-1), U.reshape(-1)])
+vec2XU = lambda z, Xshape, Ushape: (
+    z[: np.prod(Xshape)].reshape(Xshape),
+    z[np.prod(Xshape) :].reshape(Ushape),
+)
+
 
 def scp_solve(
     f_fx_fu_fn,
@@ -176,14 +194,17 @@ def scp_solve(
     max_iters=100,
     time_limit=1000.0,
     res_tol=1e-5,
-    rho_res_x=1e0,
-    rho_res_u=1e-2,
+    reg_x=1e0,
+    reg_u=1e-2,
     slew_rate=0.0,
     u_slew=None,
     cost_fn=None,
     method="lqp",
     solver_settings={},
     solver_state=None,
+    AA=False,
+    AA_L=20,
+    AA_it=20,
 ):
     t_elaps = time.time()
 
@@ -211,9 +232,10 @@ def scp_solve(
         z if z is not None else np.zeros((0, 0, 0))
         for z in [x_l, x_u, u_l, u_u]
     ]
-    data = dict(solver_data=[], hist=[])
+    data = dict(solver_data=[], hist=[], sol_hist=[])
+    AA_Fs = []
 
-    field_names = ["it", "elaps", "obj", "resid", "rho_res_x", "rho_res_u"]
+    field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
     fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
     tp = utl.TablePrinter(field_names, fmts=fmts)
 
@@ -232,59 +254,43 @@ def scp_solve(
         X_ref_, U_ref_ = augment_cost(
             cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref
         )
+
+        args_dyn = (f, fx, fu, x0, X_prev, U_prev)
+        args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
+        args_cstr = (x_l, x_u, u_l, u_u)
+        solver_settings_ = dict(solver_settings, solver_state=solver_state)
+        kw = dict(method=method, solver_settings=solver_settings_)
+
         t_aff_solve = time.time()
-        X, U, solver_data = aff_solve(
-            f,
-            fx,
-            fu,
-            x0,
-            X_prev,
-            U_prev,
-            Q,
-            R,
-            X_ref_,
-            U_ref_,
-            rho_res_x,
-            rho_res_u,
-            slew_rate,
-            u_slew,
-            x_l,
-            x_u,
-            u_l,
-            u_u,
-            method=method,
-            solver_settings=dict(solver_settings, solver_state=solver_state),
-        )
+        X, U, solver_data = aff_solve(*args_dyn, *args_cost, *args_cstr, **kw)
         t_aff_solve = time.time() - t_aff_solve
+
         solver_state = solver_data.get("solver_state", None)
         X, U = X.reshape((M, N + 1, xdim)), U.reshape((M, N, udim))
 
         if debug:
-            plt.figure(345789453)
-            plt.clf()
-            for i in range(X.shape[-1]):
-                plt.plot(X[0, :, i], label="x" + str(i), alpha=0.5)
-            plt.title("State, it %03d" % it)
-            plt.legend()
-            plt.tight_layout()
+            data["sol_hist"].append((X, U))
 
-            plt.figure(4389423733)
-            plt.clf()
-            for i in range(U.shape[-1]):
-                plt.plot(U[0, :, i], label="u" + str(i), alpha=0.5)
-            plt.title("Control, it %03d" % it)
-            plt.legend()
-            plt.tight_layout()
-
-            plt.draw_all()
-            plt.pause(1e-2)
+        if AA:
+            X_ = np.concatenate([x0[..., None, :], X_prev], -2)
+            AA_Fs.append(XU2vec(X - X_, U - U_prev))
+            if it >= AA_it:
+                alfs = minimize_AA(AA_Fs[-min(AA_L, len(AA_Fs)) :], 2)
+                XUs = data["sol_hist"][-min(AA_L, len(AA_Fs)) :]
+                X = sum(alf * X for (alf, (X, _)) in zip(alfs, XUs))
+                U = sum(alf * U for (alf, (_, U)) in zip(alfs, XUs))
 
         if np.any(np.isnan(X)) or np.any(np.isnan(U)):
             if verbose:
                 print_fn("Solver failed...")
             return None, None, None
+
         X_ = X[..., 1:, :]
-        dX, dU = X_ - X_prev, U - U_prev
+        if AA:
+            dX = data["sol_hist"][-1][0][..., 1:, :] - X_prev
+            dU = data["sol_hist"][-1][1] - U_prev
+        else:
+            dX, dU = X_ - X_prev, U - U_prev
         max_res = max(np.max(norm(dX, 2, -1)), np.max(norm(dU, 2, -1)))
         dX, dU = X_ - X_ref, U - U_ref
         obj = (np.sum(dX * bmv(Q, dX)) + np.sum(dU * bmv(R, dU))) / N / M
@@ -292,7 +298,7 @@ def scp_solve(
         X_prev, U_prev = X[..., 1:, :], U
 
         t_run = time.time() - t_elaps
-        vals = (it + 1, t_run, obj, max_res, rho_res_x, rho_res_u)
+        vals = (it + 1, t_run, obj, max_res, reg_x, reg_u)
         if verbose:
             print_fn(tp.make_values(vals))
         data["solver_data"].append(solver_data)
@@ -323,33 +329,40 @@ solve = scp_solve
 ##$#############################################################################
 ##^# tuning hyperparameters ####################################################
 def tune_scp(
-    *args, sample_nb=14, rho_rng=(-3, 3), solve_fn=scp_solve, **kwargs
+    *args,
+    sample_nb=14,
+    reg_rng=(-3, 3),
+    solve_fn=scp_solve,
+    savefig=None,
+    **kwargs
 ):
-    rho_res_ratio = kwargs.get("rho_res_ratio", 1e-1)
+    reg_ratio = kwargs.get("reg_ratio", 1e-1)
 
-    rho_res_list = kwargs.get("rho_rng", np.logspace(*rho_rng, sample_nb))
+    reg_list = kwargs.get("reg_rng", np.logspace(*reg_rng, sample_nb))
     res_list = []
-    for rho_res in tqdm(rho_res_list):
-        rho_res_x, rho_res_u = rho_res, rho_res * rho_res_ratio
-        kwargs["rho_res_x"], kwargs["rho_res_u"] = rho_res_x, rho_res_u
+    for reg in tqdm(reg_list):
+        reg_x, reg_u = reg, reg * reg_ratio
+        kwargs["reg_x"], kwargs["reg_u"] = reg_x, reg_u
         kwargs["verbose"] = False
         X, U, data = solve_fn(*args, **kwargs)
-        inf = 1e1
+        inf = 1e2
         res_list.append(inf if data is None else data["hist"][-1]["resid"])
     plt.figure()
-    plt.loglog(rho_res_list, res_list)
+    plt.loglog(reg_list, res_list)
     plt.ylabel("final residual")
-    plt.xlabel("rho_res_x")
-    plt.title("rho_res_u = rho_res_x * %6.1e" % rho_res_ratio)
+    plt.xlabel("reg_x")
+    plt.title("reg_u = reg_x * %6.1e" % reg_ratio)
     plt.tight_layout()
     plt.grid(b=True, which="major")
     plt.grid(b=True, which="minor")
+    if savefig is not None:
+        plt.savefig(savefig, dpi=200)
     plt.draw_all()
     plt.pause(1e-1)
 
-    rho_res_x = rho_res_list[np.argmin(res_list)]
-    rho_res_u = rho_res_ratio * rho_res_x
-    return rho_res_x, rho_res_u
+    reg_x = reg_list[np.argmin(res_list)]
+    reg_u = reg_ratio * reg_x
+    return reg_x, reg_u
 
 
 ##$#############################################################################
@@ -377,8 +390,8 @@ def accelerated_scp_solve(
     max_iters=100,
     time_limit=1000.0,
     res_tol=1e-5,
-    rho_res_x=1e0,
-    rho_res_u=1e-2,
+    reg_x=1e0,
+    reg_u=1e-2,
     slew_rate=0.0,
     u_slew=None,
     cost_fn=None,
@@ -400,7 +413,7 @@ def accelerated_scp_solve(
     X_prev_2hist = [X_prev, X_prev]
     U_prev_2hist = [U_prev, U_prev]
 
-    field_names = ["it", "elaps", "obj", "resid", "rho_res_x", "rho_res_u"]
+    field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
     fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
     tp = utl.TablePrinter(field_names, fmts=fmts)
 
@@ -430,8 +443,8 @@ def accelerated_scp_solve(
             max_iters=1,
             time_limit=math.inf,
             res_tol=0.0,
-            rho_res_x=rho_res_x,
-            rho_res_u=rho_res_u,
+            reg_x=reg_x,
+            reg_u=reg_u,
             slew_rate=slew_rate,
             u_slew=u_slew,
             cost_fn=cost_fn,
@@ -451,8 +464,7 @@ def accelerated_scp_solve(
             data[k].extend(data_[k])
         if verbose:
             vals = [it + 1, time.time() - t_start] + [
-                data_["hist"][-1][k]
-                for k in ["obj", "resid", "rho_res_x", "rho_res_u"]
+                data_["hist"][-1][k] for k in ["obj", "resid", "reg_x", "reg_u"]
             ]
             print_fn(tp.make_values(vals))
         if data["hist"][-1]["resid"] < res_tol:

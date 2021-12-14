@@ -6,7 +6,7 @@ from shutil import rmtree
 # perform setup ##############################################
 setup(
     name="pmpc",
-    version="0.1",
+    version="0.5",
     packages=find_packages(),
     install_requires=[],
     dependency_links=[],
