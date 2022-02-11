@@ -13,18 +13,6 @@ jl = None
 print_fn = lambda *args, **kwargs: print(*args, **kwargs)
 
 
-def minimize_AA(Fs, norm=2):
-    import cvxpy as cp
-
-    F = np.stack([f.reshape(-1) for f in Fs], -1)
-    alf = cp.Variable(F.shape[-1])
-    #obj = cp.sum(cp.norm(F @ cp.diag(alf), norm, -2))
-    obj = cp.sum_squares(F @ cp.diag(alf))
-    prob = cp.Problem(cp.Minimize(obj), [cp.sum(alf) == 1])
-    prob.solve(cp.GUROBI)
-    return alf.value
-
-
 def ensure_julia():
     global jl
 
@@ -69,6 +57,36 @@ def make_sysimage(path):
     )
 
 
+##$#############################################################################
+##^# fixed-point convergence methods ###########################################
+def AA_method(Fs):
+    F = np.stack([f.reshape(-1) for f in Fs], -1)
+    Ft = F[:, :-1] - F[:, -1:]
+    th = np.linalg.solve(
+        Ft.T @ Ft + 1e-10 * np.eye(Ft.shape[-1]), -Ft.T @ F[:, -1:]
+    ).reshape(-1)
+    alf_ = np.concatenate([th, [1.0 - np.sum(th)]], -1)
+    return alf_
+
+
+def smooth_method(Fs):
+    F = np.stack([f.reshape(-1) for f in Fs], -1)
+    return np.ones(F.shape[-1]) / F.shape[-1]
+
+
+def select_method(Fs):
+    F = np.stack([f.reshape(-1) for f in Fs], -1)
+    A = np.diag(np.linalg.norm(F, axis=-2) ** 2)
+    A = np.concatenate([A, np.ones((A.shape[-2], 1))], -1)
+    temp = np.ones((1, A.shape[-1]))
+    temp[:, -1] = 0.0
+    A = np.concatenate([A, temp], -2)
+    b = np.concatenate([np.zeros(F.shape[-1]), np.ones(1)], -1)
+    alf = np.linalg.solve(A, b).reshape(-1)[:-1]
+    return alf
+
+
+FILTER_MAP = dict(smooth=smooth_method, select=select_method, AA=AA_method)
 ##$#############################################################################
 ##^# affine solve using julia ##################################################
 def atleast_nd(x, n):
@@ -202,9 +220,9 @@ def scp_solve(
     method="lqp",
     solver_settings={},
     solver_state=None,
-    AA=False,
-    AA_L=20,
-    AA_it=20,
+    filter_method="",
+    filter_window=5,
+    filter_it0=20,
 ):
     t_elaps = time.time()
 
@@ -233,7 +251,7 @@ def scp_solve(
         for z in [x_l, x_u, u_l, u_u]
     ]
     data = dict(solver_data=[], hist=[], sol_hist=[])
-    AA_Fs = []
+    Fs = []
 
     field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
     fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
@@ -268,15 +286,17 @@ def scp_solve(
         solver_state = solver_data.get("solver_state", None)
         X, U = X.reshape((M, N + 1, xdim)), U.reshape((M, N, udim))
 
-        if debug:
+        if debug or filter_method != "":
             data["sol_hist"].append((X, U))
 
-        if AA:
+        if filter_method != "":
             X_ = np.concatenate([x0[..., None, :], X_prev], -2)
-            AA_Fs.append(XU2vec(X - X_, U - U_prev))
-            if it >= AA_it:
-                alfs = minimize_AA(AA_Fs[-min(AA_L, len(AA_Fs)) :], 2)
-                XUs = data["sol_hist"][-min(AA_L, len(AA_Fs)) :]
+            Fs.append(XU2vec(X - X_, U - U_prev))
+            if it >= filter_it0:
+                alfs = FILTER_MAP[filter_method](
+                    Fs[-min(filter_window, len(Fs)) :]
+                )
+                XUs = data["sol_hist"][-min(filter_window, len(Fs)) :]
                 X = sum(alf * X for (alf, (X, _)) in zip(alfs, XUs))
                 U = sum(alf * U for (alf, (_, U)) in zip(alfs, XUs))
 
@@ -286,7 +306,7 @@ def scp_solve(
             return None, None, None
 
         X_ = X[..., 1:, :]
-        if AA:
+        if filter_method != "":
             dX = data["sol_hist"][-1][0][..., 1:, :] - X_prev
             dU = data["sol_hist"][-1][1] - U_prev
         else:
@@ -319,6 +339,8 @@ def scp_solve(
         print_fn("#" * 80)
         print_fn(msg, "%9.4e" % max_res)
         print_fn("#" * 80)
+    if not debug:
+        del data["sol_hist"]
     if not single_particle_problem_flag:
         return X.reshape((M, N + 1, xdim)), U.reshape((M, N, udim)), data
     else:

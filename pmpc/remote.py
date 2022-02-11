@@ -1,4 +1,4 @@
-import os, pickle, sys, pdb, math, time, signal
+import os, pickle, sys, pdb, math, time, signal, traceback
 from multiprocessing import Process, Value
 
 import zmq, cloudpickle as cp, zstandard as zstd
@@ -70,13 +70,15 @@ def server_(exit_flag, **kw):
 
         try:
             method, args, kwargs = cp.loads(zstd.decompress(data))
-            if method in supported_methods:
+        except (pickle.UnpicklingError, EOFError, TypeError, zstd.ZstdError):
+            method = "UNSUPPORTED"
+        if method in supported_methods:
+            try:
                 ret = supported_methods[method](*args, **kwargs)
                 sock.send(zstd.compress(cp.dumps(ret)))
                 continue
-        except (pickle.UnpicklingError, EOFError, TypeError, zstd.ZstdError):
-        #except (pickle.UnpicklingError, EOFError, TypeError):
-            pass
+            except Exception as e:
+                traceback.print_exc()
 
         # always respond
         sock.send(zstd.compress(cp.dumps(None)))
