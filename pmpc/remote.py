@@ -9,10 +9,10 @@ PORT = 7117117
 
 
 ## calling utilities ###########################################################
-def call(method, *args, **kwargs):
+def call(method, port, *args, **kwargs):
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REQ)
-    sock.connect("tcp://localhost:%s" % str(PORT))
+    sock.connect("tcp://localhost:%s" % str(port))
     msg2send = cp.dumps(
         (sys.path, zstd.compress(cp.dumps((method, args, kwargs))))
     )
@@ -20,35 +20,28 @@ def call(method, *args, **kwargs):
     return cp.loads(zstd.decompress(sock.recv()))
 
 
-solve = lambda *args, **kw: call("solve", *args, **kw)
-tune_scp = lambda *args, **kw: call("tune_scp", *args, **kw)
+solve = lambda *args, **kw: call("solve", solve.port, *args, **kw)
+solve.port = PORT
+tune_scp = lambda *args, **kw: call("tune_scp", tune_scp.port, *args, **kw)
+tune_scp.port = PORT
 
 ################################################################################
 ## server utilities ############################################################
-def start_server(background=False):
-    if hasattr(start_server, "server"):
-        raise RuntimeError("One PMPC server alread exits")
-    if background:
-        start_server.server = Server()
-    else:
-        exit_flag = Value("b", False)
-        server_(exit_flag)
-
-
-def stop_server():
-    if not hasattr(start_server, "server"):
-        return
-    start_server.server.stop()
-    delattr(start_server, "server")
+def start_server(port=PORT):
+    if not hasattr(start_server, "servers"):
+        start_server.servers = dict()
+    if port in start_server.servers.keys():
+        raise RuntimeError("PMPC server on this port already exits")
+    start_server.servers[port] = Server(port)
 
 
 ################################################################################
 ## server routine ##############################################################
-def server_(exit_flag, **kw):
+def server_(exit_flag, port=PORT, **kw):
     supported_methods = dict(solve=solve_, tune_scp=tune_scp_)
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REP)
-    sock.bind("tcp://*:%s" % str(PORT))
+    sock.bind("tcp://*:%s" % str(port))
     while not exit_flag.value:
         time.sleep(1e-3)
         is_msg_there = sock.poll(100)  # in milliseconds
@@ -86,9 +79,9 @@ def server_(exit_flag, **kw):
 
 
 class Server:
-    def __init__(self):
+    def __init__(self, port=PORT):
         self.exit_flag = Value("b", False)
-        self.process = Process(target=server_, args=(self.exit_flag,))
+        self.process = Process(target=server_, args=(self.exit_flag, port))
         self.old_signal_handler = signal.signal(signal.SIGINT, self.sighandler)
         self.process.start()
 
@@ -106,7 +99,7 @@ class Server:
 ################################################################################
 ## module level access #########################################################
 if __name__ == "__main__":
-    start_server(background=True)
+    start_server(PORT if len(sys.argv) <= 1 else sys.argv[1])
     while True:
         time.sleep(1)
 ################################################################################

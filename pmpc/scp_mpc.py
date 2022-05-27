@@ -137,11 +137,11 @@ def aff_solve(
         )
     ]
     if method == "lqp":
-        solve_fn = jl.lqp_solve
+        solve_fn = jl.PMPC.lqp_solve
     elif method == "admm":
-        solve_fn = jl.admm_solve
+        solve_fn = jl.PMPC.admm_solve
     elif method == "socp":
-        solve_fn = jl.lsocp_solve
+        solve_fn = jl.PMPC.lsocp_solve
     else:
         raise ValueError("No method [%s] found" % method)
 
@@ -174,10 +174,12 @@ def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
 
         # augment the state cost #############
         if cx is not None:
+            cx = np.array(cx)
             X_ref = X_ref - np.linalg.solve(Q, cx[..., None])[..., 0]
 
         # augment the control cost ###########
         if cu is not None:
+            cu = np.array(cu)
             U_ref = U_ref - np.linalg.solve(R, cu[..., None])[..., 0]
     return X_ref, U_ref
 
@@ -209,7 +211,7 @@ def scp_solve(
     u_u=None,
     verbose=False,
     debug=False,
-    max_iters=100,
+    max_it=100,
     time_limit=1000.0,
     res_tol=1e-5,
     reg_x=1e0,
@@ -227,6 +229,7 @@ def scp_solve(
     t_elaps = time.time()
 
     # create variables and reference trajectories ##############################
+    x0, reg_x, reg_u = np.array(x0), float(reg_x), float(reg_u)
     Q, R = np.copy(Q), np.copy(R)
     if x0.ndim == 1:  # single particle case
         assert x0.ndim == 1 and R.ndim == 3 and Q.ndim == 3
@@ -240,16 +243,18 @@ def scp_solve(
         single_particle_problem_flag = False
     M, N, xdim, udim = Q.shape[:3] + R.shape[-1:]
 
-    X_ref = np.zeros((M, N, xdim)) if X_ref is None else X_ref
-    U_ref = np.zeros((M, N, udim)) if U_ref is None else U_ref
-    X_prev = X_prev if X_prev is not None else X_ref
-    U_prev = U_prev if U_prev is not None else U_ref
+    X_ref = np.zeros((M, N, xdim)) if X_ref is None else np.array(X_ref)
+    U_ref = np.zeros((M, N, udim)) if U_ref is None else np.array(U_ref)
+    X_prev = np.array(X_prev) if X_prev is not None else X_ref
+    U_prev = np.array(U_prev) if U_prev is not None else U_ref
     X_prev, U_prev = X_prev.reshape((M, N, xdim)), U_prev.reshape((M, N, udim))
     X_ref, U_ref = X_ref.reshape((M, N, xdim)), U_ref.reshape((M, N, udim))
     x_l, x_u, u_l, u_u = [
-        z if z is not None else np.zeros((0, 0, 0))
+        np.array(z) if z is not None else np.zeros((0, 0, 0))
         for z in [x_l, x_u, u_l, u_u]
     ]
+    slew_rate = slew_rate if slew_rate is None else float(slew_rate)
+    u_slew = np.array(u_slew) if u_slew is not None else None
     data = dict(solver_data=[], hist=[], sol_hist=[])
     Fs = []
 
@@ -262,7 +267,7 @@ def scp_solve(
         print_fn(tp.make_header())
     it = 0
     X, U, solver_data = None, None, None
-    while it < max_iters:
+    while it < max_it:
         X_ = np.concatenate([x0[..., None, :], X_prev[..., :-1, :]], -2)
         f, fx, fu = f_fx_fu_fn(X_, U_prev)
         f = f.reshape((M, N, xdim))
@@ -409,7 +414,7 @@ def accelerated_scp_solve(
     u_u=None,
     verbose=True,
     debug=False,
-    max_iters=100,
+    max_it=100,
     time_limit=1000.0,
     res_tol=1e-5,
     reg_x=1e0,
@@ -443,7 +448,7 @@ def accelerated_scp_solve(
     data = {}
     if verbose:
         print_fn(tp.make_header())
-    for it in range(max_iters):
+    for it in range(max_it):
         X_prev = momentum_update(X_prev_2hist[-1], X_prev_2hist[-2], it)
         U_prev = momentum_update(U_prev_2hist[-1], U_prev_2hist[-2], it)
 
@@ -462,7 +467,7 @@ def accelerated_scp_solve(
             u_u=u_u,
             verbose=False,
             debug=debug,
-            max_iters=1,
+            max_it=1,
             time_limit=math.inf,
             res_tol=0.0,
             reg_x=reg_x,
