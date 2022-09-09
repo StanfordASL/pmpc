@@ -11,7 +11,7 @@ function main()
   f = zeros(xdim, N, M)
   rho_res_x, rho_res_u = 0.0, 0.0
   fx, fu = zeros(xdim, xdim, N, M), zeros(xdim, udim, N, M)
-  rng = range(0.1, stop=0.9, length=10)
+  rng = range(0.1, stop = 0.9, length = 10)
   @views for i in 1:M
     r1, r2 = rand(rng), rand(rng)
     @views for j in 1:N
@@ -36,10 +36,10 @@ function main()
 
   println("\nDone with dynamics, running ECOS\n")
 
-  PMPC.@ptime X, U = PMPC.lsocp_solve(x0, f, fx, fu, X_prev, U_prev, Q, R,
-                                      X_ref, U_ref; lu=lu, uu=uu) 4
-  PMPC.@ptime X2, U2 = PMPC.lqp_solve(x0, f, fx, fu, X_prev, U_prev, Q, R,
-                                      X_ref, U_ref; lu=lu, uu=uu) 4
+  PMPC.@ptime X, U =
+    PMPC.lsocp_solve(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; lu = lu, uu = uu) 4
+  PMPC.@ptime X2, U2 =
+    PMPC.lqp_solve(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; lu = lu, uu = uu) 4
 
   #for i in 1:min(M, 3)
   #  figure(i); clf()
