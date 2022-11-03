@@ -1,7 +1,9 @@
 import os, pickle, sys, pdb, math, time, signal, traceback
 from multiprocessing import Process, Value
 
-import zmq, cloudpickle as cp, zstandard as zstd
+#import zmq, cloudpickle as cp, zstandard as zstd
+import gzip
+import zmq, cloudpickle as cp
 
 from .scp_mpc import solve as solve_, tune_scp as tune_scp_
 
@@ -14,10 +16,10 @@ def call(method, port, *args, **kwargs):
     sock = ctx.socket(zmq.REQ)
     sock.connect("tcp://localhost:%s" % str(port))
     msg2send = cp.dumps(
-        (sys.path, zstd.compress(cp.dumps((method, args, kwargs))))
+        (sys.path, gzip.compress(cp.dumps((method, args, kwargs))))
     )
     sock.send(msg2send)
-    return cp.loads(zstd.decompress(sock.recv()))
+    return cp.loads(gzip.decompress(sock.recv()))
 
 
 solve = lambda *args, **kw: call("solve", solve.port, *args, **kw)
@@ -62,19 +64,20 @@ def server_(exit_flag, port=PORT, **kw):
         # print("Updating path took %9.4e s" % (time.time() - t))
 
         try:
-            method, args, kwargs = cp.loads(zstd.decompress(data))
-        except (pickle.UnpicklingError, EOFError, TypeError, zstd.ZstdError):
+            method, args, kwargs = cp.loads(gzip.decompress(data))
+        #except (pickle.UnpicklingError, EOFError, TypeError, zstd.ZstdError):
+        except (pickle.UnpicklingError, EOFError, TypeError, gzip.ZstdError):
             method = "UNSUPPORTED"
         if method in supported_methods:
             try:
                 ret = supported_methods[method](*args, **kwargs)
-                sock.send(zstd.compress(cp.dumps(ret)))
+                sock.send(gzip.compress(cp.dumps(ret)))
                 continue
             except Exception as e:
                 traceback.print_exc()
 
         # always respond
-        sock.send(zstd.compress(cp.dumps(None)))
+        sock.send(gzip.compress(cp.dumps(None)))
     sock.close()
 
 

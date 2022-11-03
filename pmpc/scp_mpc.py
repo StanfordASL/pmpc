@@ -1,12 +1,15 @@
 ##^# library imports ###########################################################
-import math, os, pdb, time
+import math
+import time
 from copy import copy
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt, numpy as np
+import matplotlib.pyplot as plt
+import numpy as np
 from tqdm import tqdm
 
-from . import utils as utl
 from . import julia_utils as ju
+from .utils import TablePrinter
 
 jl = None
 
@@ -17,64 +20,25 @@ def ensure_julia():
     global jl
 
     if jl is None:
-        # from julia import Julia
-        # Julia(sysimage="sys.so")
-        # print("using sysimaage")
-        # from julia import Main as jl_
-        # jl = jl_
-        # jl.using("PMPC")
-
-        # from julia.api import LibJulia
-
-        # api = LibJulia.load()
-        # api.init_julia(["--trace-compile=out.jl"])
-
-        # from julia import Main as jl_
-        # jl = jl_
-        ##jl.using("PackageCompiler")
-        # jl.using("PMPC")
         jl = ju.load_julia()
-
-
-def load_sysimage(path):
-    from julia import Julia
-
-    global jl
-    jl = Julia(sysimage=path)
-
-    from julia import Main as jl_
-
-    jl = jl_
-    jl.using("PMPC")
-
-
-def make_sysimage(path):
-    ensure_julia()
-    # jl.using("PackageCompiler")
-    jl.eval(
-        'create_sysimage(:PMPC, sysimage_path="%s", precompile_execution_file="out.jl")'
-        % path
-    )
 
 
 ##$#############################################################################
 ##^# fixed-point convergence methods ###########################################
-def AA_method(Fs):
+def AA_method(Fs: List[np.ndarray]) -> np.ndarray:
     F = np.stack([f.reshape(-1) for f in Fs], -1)
     Ft = F[:, :-1] - F[:, -1:]
-    th = np.linalg.solve(
-        Ft.T @ Ft + 1e-10 * np.eye(Ft.shape[-1]), -Ft.T @ F[:, -1:]
-    ).reshape(-1)
+    th = np.linalg.solve(Ft.T @ Ft + 1e-10 * np.eye(Ft.shape[-1]), -Ft.T @ F[:, -1:]).reshape(-1)
     alf_ = np.concatenate([th, [1.0 - np.sum(th)]], -1)
     return alf_
 
 
-def smooth_method(Fs):
+def smooth_method(Fs: List[np.ndarray]) -> np.ndarray:
     F = np.stack([f.reshape(-1) for f in Fs], -1)
     return np.ones(F.shape[-1]) / F.shape[-1]
 
 
-def select_method(Fs):
+def select_method(Fs: List[np.ndarray]) -> np.ndarray:
     F = np.stack([f.reshape(-1) for f in Fs], -1)
     A = np.diag(np.linalg.norm(F, axis=-2) ** 2)
     A = np.concatenate([A, np.ones((A.shape[-2], 1))], -1)
@@ -89,7 +53,7 @@ def select_method(Fs):
 FILTER_MAP = dict(smooth=smooth_method, select=select_method, AA=AA_method)
 ##$#############################################################################
 ##^# affine solve using julia ##################################################
-def atleast_nd(x, n):
+def atleast_nd(x: Optional[np.ndarray], n: int):
     if x is None:
         return None
     else:
@@ -97,27 +61,28 @@ def atleast_nd(x, n):
 
 
 def aff_solve(
-    f,
-    fx,
-    fu,
-    x0,
-    X_prev,
-    U_prev,
-    Q,
-    R,
-    X_ref,
-    U_ref,
-    reg_x,
-    reg_u,
-    slew_rate,
-    u_slew,
-    x_l,
-    x_u,
-    u_l,
-    u_u,
-    method="lqp",
-    solver_settings={},
-):
+    f: np.ndarray,
+    fx: np.ndarray,
+    fu: np.ndarray,
+    x0: np.ndarray,
+    X_prev: np.ndarray,
+    U_prev: np.ndarray,
+    Q: np.ndarray,
+    R: np.ndarray,
+    X_ref: np.ndarray,
+    U_ref: np.ndarray,
+    reg_x: np.ndarray,
+    reg_u: np.ndarray,
+    slew_rate: float,
+    u_slew: np.ndarray,
+    x_l: np.ndarray,
+    x_u: np.ndarray,
+    u_l: np.ndarray,
+    u_u: np.ndarray,
+    method: str = "lqp",
+    solver_settings: Optional[Dict[str, Any]] = None,
+) -> Tuple[np.ndarray, np.ndarray, Any]:
+    """Solve a single instance of a linearized MPC problem."""
     ensure_julia()
     f = atleast_nd(f, 3)
     fx, fu = atleast_nd(fx, 4), atleast_nd(fu, 4)
@@ -145,7 +110,7 @@ def aff_solve(
     else:
         raise ValueError("No method [%s] found" % method)
 
-    solver_settings = copy(solver_settings)
+    solver_settings = copy(solver_settings) if solver_settings is not None else dict()
     if u_slew is not None:
         solver_settings["slew_um1"] = u_slew
     if slew_rate is not None:
@@ -169,6 +134,7 @@ def aff_solve(
 ##$#############################################################################
 ##^# cost augmentation #########################################################
 def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
+    """Modify the linear reference trajectory to account for the linearized non-linear cost term."""
     if cost_fn is not None:
         cx, cu = cost_fn(X_prev, U_prev)
 
@@ -197,35 +163,73 @@ vec2XU = lambda z, Xshape, Ushape: (
 
 
 def scp_solve(
-    f_fx_fu_fn,
-    Q,
-    R,
-    x0,
-    X_ref=None,
-    U_ref=None,
-    X_prev=None,
-    U_prev=None,
-    x_l=None,
-    x_u=None,
-    u_l=None,
-    u_u=None,
-    verbose=False,
-    debug=False,
-    max_it=100,
-    time_limit=1000.0,
-    res_tol=1e-5,
-    reg_x=1e0,
-    reg_u=1e-2,
-    slew_rate=0.0,
-    u_slew=None,
-    cost_fn=None,
-    method="lqp",
-    solver_settings={},
-    solver_state=None,
-    filter_method="",
-    filter_window=5,
-    filter_it0=20,
-):
+    f_fx_fu_fn: Callable,
+    Q: np.ndarray,
+    R: np.ndarray,
+    x0: np.ndarray,
+    X_ref: Optional[np.ndarray] = None,
+    U_ref: Optional[np.ndarray] = None,
+    X_prev: Optional[np.ndarray] = None,
+    U_prev: Optional[np.ndarray] = None,
+    x_l: Optional[np.ndarray] = None,
+    x_u: Optional[np.ndarray] = None,
+    u_l: Optional[np.ndarray] = None,
+    u_u: Optional[np.ndarray] = None,
+    verbose: bool = False,
+    debug: bool = False,
+    max_it: int = 100,
+    time_limit: float = 1000.0,
+    res_tol: float = 1e-5,
+    reg_x: float = 1e0,
+    reg_u: float = 1e-2,
+    slew_rate: float = 0.0,
+    u_slew: Optional[np.ndarray] = None,
+    cost_fn: Optional[Callable] = None,
+    method: str = "lqp",
+    solver_settings: Optional[Dict[str, Any]] = None,
+    solver_state: Optional[Dict[str, Any]] = None,
+    filter_method: str = "",
+    filter_window: int = 5,
+    filter_it0: int = 20,
+    return_min_viol: bool = False,
+    min_viol_it0: int = -1,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with optional non-linear cost term.
+
+    Args:
+        f_fx_fu_fn (Callable): Dynamics with linearization callable.
+        Q (np.ndarray): The quadratic state cost.
+        R (np.ndarray): The quadratic control cost.
+        x0 (np.ndarray): Initial state.
+        X_ref (Optional[np.ndarray], optional): Reference state trajectory. Defaults to zeros.
+        U_ref (Optional[np.ndarray], optional): Reference control trajectory. Defaults to zeros.
+        X_prev (Optional[np.ndarray], optional): Previous state solution. Defaults to x0.
+        U_prev (Optional[np.ndarray], optional): Previous control solution. Defaults to zeros.
+        x_l (Optional[np.ndarray], optional): Lower bound state constraint. Defaults to no constraints.
+        x_u (Optional[np.ndarray], optional): Upper bound state constraint. Defaults to no constraints.
+        u_l (Optional[np.ndarray], optional): Lower bound control constraint.. Defaults to no constraints.
+        u_u (Optional[np.ndarray], optional): Upper bound control constraint.. Defaults to no constraints.
+        verbose (bool, optional): Whether to print output. Defaults to False.
+        debug (bool, optional): Whether to store debugging information. Defaults to False.
+        max_it (int, optional): Max number of SCP iterations. Defaults to 100.
+        time_limit (float, optional): Time limit in seconds. Defaults to 1000.0.
+        res_tol (float, optional): Residual tolerance. Defaults to 1e-5.
+        reg_x (float, optional): State improvement regularization. Defaults to 1e0.
+        reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
+        slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
+        u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
+        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. Defaults to None.
+        method (str, optional): Underlying affine solver method to call. Defaults to "lqp".
+        solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
+        solver_state (Optional[Dict[str, Any]], optional): Solver state. Defaults to None.
+        filter_method (str, optional): Filter method to choose. Defaults to "" which means no filter.
+        filter_window (int, optional): Filter window to pick. Defaults to 5.
+        filter_it0 (int, optional): First iteration to start filtering on. Defaults to 20.
+        return_min_viol (bool, optional): Whether to return minimum violation solution as well. Defaults to False.
+        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. Defaults to -1, which means immediately.
+    Returns:
+        Tuple[np.ndarray, ]: _description_
+    """
     t_elaps = time.time()
 
     # create variables and reference trajectories ##############################
@@ -250,8 +254,7 @@ def scp_solve(
     X_prev, U_prev = X_prev.reshape((M, N, xdim)), U_prev.reshape((M, N, udim))
     X_ref, U_ref = X_ref.reshape((M, N, xdim)), U_ref.reshape((M, N, udim))
     x_l, x_u, u_l, u_u = [
-        np.array(z) if z is not None else np.zeros((0, 0, 0))
-        for z in [x_l, x_u, u_l, u_u]
+        np.array(z) if z is not None else np.zeros((0, 0, 0)) for z in [x_l, x_u, u_l, u_u]
     ]
     slew_rate = slew_rate if slew_rate is None else float(slew_rate)
     u_slew = np.array(u_slew) if u_slew is not None else None
@@ -260,9 +263,11 @@ def scp_solve(
 
     field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
     fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
-    tp = utl.TablePrinter(field_names, fmts=fmts)
+    tp = TablePrinter(field_names, fmts=fmts)
 
-    # solve sequentially, linearizing ##########################################
+    min_viol = math.inf
+
+    # solve sequentially, linearizing ##############################################################
     if verbose:
         print_fn(tp.make_header())
     it = 0
@@ -274,15 +279,14 @@ def scp_solve(
         fx = fx.reshape((M, N, xdim, xdim))
         fu = fu.reshape((M, N, xdim, udim))
 
-        X_ref_, U_ref_ = augment_cost(
-            cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref
-        )
+        X_ref_, U_ref_ = augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
 
         args_dyn = (f, fx, fu, x0, X_prev, U_prev)
         args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
         args_cstr = (x_l, x_u, u_l, u_u)
-        solver_settings_ = dict(solver_settings, solver_state=solver_state)
-        kw = dict(method=method, solver_settings=solver_settings_)
+        solver_settings = solver_settings if solver_settings is not None else dict()
+        solver_settings["solver_state"] = solver_state
+        kw = dict(method=method, solver_settings=solver_settings)
 
         t_aff_solve = time.time()
         X, U, solver_data = aff_solve(*args_dyn, *args_cost, *args_cstr, **kw)
@@ -294,21 +298,23 @@ def scp_solve(
         if debug or filter_method != "":
             data["sol_hist"].append((X, U))
 
+        # filter the result if filter method is requested ##########################################
         if filter_method != "":
             X_ = np.concatenate([x0[..., None, :], X_prev], -2)
             Fs.append(XU2vec(X - X_, U - U_prev))
             if it >= filter_it0:
-                alfs = FILTER_MAP[filter_method](
-                    Fs[-min(filter_window, len(Fs)) :]
-                )
+                alfs = FILTER_MAP[filter_method](Fs[-min(filter_window, len(Fs)) :])
                 XUs = data["sol_hist"][-min(filter_window, len(Fs)) :]
                 X = sum(alf * X for (alf, (X, _)) in zip(alfs, XUs))
                 U = sum(alf * U for (alf, (_, U)) in zip(alfs, XUs))
+        # filter the result if filter method is requested ##########################################
 
+        # return if the solver failed ##############################################################
         if np.any(np.isnan(X)) or np.any(np.isnan(U)):
             if verbose:
                 print_fn("Solver failed...")
             return None, None, None
+        # return if the solver failed ##############################################################
 
         X_ = X[..., 1:, :]
         if filter_method != "":
@@ -331,6 +337,12 @@ def scp_solve(
         data.setdefault("t_aff_solve", [])
         data["t_aff_solve"].append(t_aff_solve)
 
+        # store the minimum violation solution #####################################################
+        if return_min_viol and (it >= min_viol_it0 or min_viol_it0 < 0):
+            if min_viol > max_res:
+                data["min_viol_sol"], min_viol = (X, U), max_res
+        # store the minimum violation solution #####################################################
+
         if max_res < res_tol:
             break
         it += 1
@@ -352,15 +364,16 @@ def scp_solve(
         return X.reshape((N + 1, xdim)), U.reshape((N, udim)), data
 
 
-solve = scp_solve
-##$#############################################################################
-##^# tuning hyperparameters ####################################################
+solve = scp_solve  # set an alias
+####################################################################################################
+
+# tuning hyperparameters ###########################################################################
 def tune_scp(
     *args,
-    sample_nb=14,
-    reg_rng=(-3, 3),
-    solve_fn=scp_solve,
-    savefig=None,
+    sample_nb: int = 14,
+    reg_rng: Tuple[int, int] = (-3, 3),
+    solve_fn: Callable = scp_solve,
+    savefig: Optional[str] = None,
     **kwargs
 ):
     reg_ratio = kwargs.get("reg_ratio", 1e-1)
@@ -392,115 +405,4 @@ def tune_scp(
     return reg_x, reg_u
 
 
-##$#############################################################################
-##^# accelerated SCP ###########################################################
-# momentum_update = lambda zk, zkm1, it: zk + it / (it + 3) * (zk - zkm1)
-alf = 1.6
-momentum_update = lambda zk, zkm1, it: alf * zk + (1.0 - alf) * zkm1
-
-
-def accelerated_scp_solve(
-    f_fx_fu_fn,
-    Q,
-    R,
-    x0,
-    X_ref=None,
-    U_ref=None,
-    X_prev=None,
-    U_prev=None,
-    x_l=None,
-    x_u=None,
-    u_l=None,
-    u_u=None,
-    verbose=True,
-    debug=False,
-    max_it=100,
-    time_limit=1000.0,
-    res_tol=1e-5,
-    reg_x=1e0,
-    reg_u=1e-2,
-    slew_rate=0.0,
-    u_slew=None,
-    cost_fn=None,
-    method="lqp",
-    solver_settings={},
-    solver_state=None,
-):
-    # initialize the SCP variables and reference trajectory ##
-    assert x0.ndim == 2 and R.ndim == 4 and Q.ndim == 4
-    M, N, xdim, udim = Q.shape[:3] + R.shape[-1:]
-    X_ref = np.zeros((M, N, xdim)) if X_ref is None else X_ref
-    U_ref = np.zeros((M, N, udim)) if U_ref is None else U_ref
-    X_prev = X_prev if X_prev is not None else X_ref
-    U_prev = U_prev if U_prev is not None else U_ref
-    X_prev, U_prev = X_prev.reshape((M, N, xdim)), U_prev.reshape((M, N, udim))
-    X_ref, U_ref = X_ref.reshape((M, N, xdim)), U_ref.reshape((M, N, udim))
-
-    # initialize the Nesterov momentum history ###############
-    X_prev_2hist = [X_prev, X_prev]
-    U_prev_2hist = [U_prev, U_prev]
-
-    field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
-    fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
-    tp = utl.TablePrinter(field_names, fmts=fmts)
-
-    t_start = time.time()
-    data = {}
-    if verbose:
-        print_fn(tp.make_header())
-    for it in range(max_it):
-        X_prev = momentum_update(X_prev_2hist[-1], X_prev_2hist[-2], it)
-        U_prev = momentum_update(U_prev_2hist[-1], U_prev_2hist[-2], it)
-
-        X, U, data_ = scp_solve(
-            f_fx_fu_fn,
-            Q,
-            R,
-            x0,
-            X_ref=X_ref,
-            U_ref=U_ref,
-            X_prev=X_prev,
-            U_prev=U_prev,
-            x_l=x_l,
-            x_u=x_u,
-            u_l=u_l,
-            u_u=u_u,
-            verbose=False,
-            debug=debug,
-            max_it=1,
-            time_limit=math.inf,
-            res_tol=0.0,
-            reg_x=reg_x,
-            reg_u=reg_u,
-            slew_rate=slew_rate,
-            u_slew=u_slew,
-            cost_fn=cost_fn,
-            method=method,
-            solver_settings=solver_settings,
-            solver_state=solver_state,
-        )
-
-        X_prev_2hist = [X_prev_2hist[-1], X[..., 1:, :]]
-        U_prev_2hist = [U_prev_2hist[-1], U]
-
-        solver_state = data_.get("solver_data", [{}])[-1].get(
-            "solver_state", None
-        )
-        for k in data_.keys():
-            data.setdefault(k, [])
-            data[k].extend(data_[k])
-        if verbose:
-            vals = [it + 1, time.time() - t_start] + [
-                data_["hist"][-1][k] for k in ["obj", "resid", "reg_x", "reg_u"]
-            ]
-            print_fn(tp.make_values(vals))
-        if data["hist"][-1]["resid"] < res_tol:
-            break
-        if (it + 2) / (it + 1) * (time.time() - t_start) > time_limit:
-            break
-    if verbose:
-        print_fn(tp.make_footer())
-    return X, U, data
-
-
-##$#############################################################################
+####################################################################################################
