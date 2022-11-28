@@ -79,7 +79,7 @@ def aff_solve(
     x_u: np.ndarray,
     u_l: np.ndarray,
     u_u: np.ndarray,
-    method: str = "lqp",
+    method: str = "socp",
     solver_settings: Optional[Dict[str, Any]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Any]:
     """Solve a single instance of a linearized MPC problem."""
@@ -92,7 +92,6 @@ def aff_solve(
     X_ref, U_ref = atleast_nd(X_ref, 3), atleast_nd(U_ref, 3)
     x_l, x_u, u_l, u_u = [atleast_nd(z, 3) for z in [x_l, x_u, u_l, u_u]]
 
-    t = time.time()
     x_l, x_u, u_l, u_u = [ju.py2jl(z, 1) for z in [x_l, x_u, u_l, u_u]]
     args = [
         ju.py2jl(z, d)
@@ -108,7 +107,7 @@ def aff_solve(
     elif method == "socp":
         solve_fn = jl.PMPC.lsocp_solve
     else:
-        raise ValueError("No method [%s] found" % method)
+        raise ValueError(f"No method [{method}] found, must be one of {['lqp', 'socp']}")
 
     solver_settings = copy(solver_settings) if solver_settings is not None else dict()
     if u_slew is not None:
@@ -185,7 +184,7 @@ def scp_solve(
     slew_rate: float = 0.0,
     u_slew: Optional[np.ndarray] = None,
     cost_fn: Optional[Callable] = None,
-    method: str = "lqp",
+    method: str = "socp",
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
     filter_method: str = "",
