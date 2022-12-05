@@ -1,3 +1,6 @@
 [submodule "PMPC.jl"]
 	path = PMPC.jl
 	url = git@github.com:StanfordASL/PMPC.jl.git
+[submodule "jfi-JAXFriendlyInterface"]
+	path = jfi-JAXFriendlyInterface
+	url = https://github.com/rdyro/jfi-JAXFriendlyInterface.git

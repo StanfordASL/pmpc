@@ -12,15 +12,18 @@ from . import julia_utils as ju
 from .utils import TablePrinter
 
 jl = None
-
+JULIA_SOLVE_FNS = dict() # attribute look up is expensive (~ 2 ms every time)
 print_fn = lambda *args, **kwargs: print(*args, **kwargs)
 
 
 def ensure_julia():
-    global jl
+    global jl, JULIA_SOLVE_FNS
 
     if jl is None:
         jl = ju.load_julia()
+        #JULIA_SOLVE_FNS["admm"] = jl.PMPC.admm_solve
+        JULIA_SOLVE_FNS["lqp"] = jl.PMPC.lqp_solve
+        JULIA_SOLVE_FNS["socp"] = jl.PMPC.lsocp_solve
 
 
 ##$#############################################################################
@@ -100,14 +103,7 @@ def aff_solve(
             [1, 1, 2, 2, 1, 1, 2, 2, 1, 1],
         )
     ]
-    if method == "lqp":
-        solve_fn = jl.PMPC.lqp_solve
-    elif method == "admm":
-        solve_fn = jl.PMPC.admm_solve
-    elif method == "socp":
-        solve_fn = jl.PMPC.lsocp_solve
-    else:
-        raise ValueError(f"No method [{method}] found, must be one of {['lqp', 'socp']}")
+    solve_fn = JULIA_SOLVE_FNS[method]
 
     solver_settings = copy(solver_settings) if solver_settings is not None else dict()
     if u_slew is not None:
@@ -132,7 +128,7 @@ def aff_solve(
 
 ##$#############################################################################
 ##^# cost augmentation #########################################################
-def augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
+def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
     """Modify the linear reference trajectory to account for the linearized non-linear cost term."""
     if cost_fn is not None:
         cx, cu = cost_fn(X_prev, U_prev)
@@ -184,6 +180,7 @@ def scp_solve(
     slew_rate: float = 0.0,
     u_slew: Optional[np.ndarray] = None,
     cost_fn: Optional[Callable] = None,
+    solver_edit_fn: Optional[Callable] = None,
     method: str = "socp",
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
@@ -278,7 +275,9 @@ def scp_solve(
         fx = fx.reshape((M, N, xdim, xdim))
         fu = fu.reshape((M, N, xdim, udim))
 
-        X_ref_, U_ref_ = augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
+        X_ref_, U_ref_ = _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
+        if solver_edit_fn is not None:
+            solver_edit_fn(solver_settings, X_prev, U_prev)
 
         args_dyn = (f, fx, fu, x0, X_prev, U_prev)
         args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
@@ -373,7 +372,7 @@ def tune_scp(
     reg_rng: Tuple[int, int] = (-3, 3),
     solve_fn: Callable = scp_solve,
     savefig: Optional[str] = None,
-    **kwargs
+    **kwargs,
 ):
     reg_ratio = kwargs.get("reg_ratio", 1e-1)
 

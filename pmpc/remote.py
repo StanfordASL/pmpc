@@ -18,18 +18,29 @@ from .scp_mpc import tune_scp as tune_scp_
 SUPPORTED_METHODS = dict(solve=solve_, tune_scp=tune_scp_)
 DEFAULT_PORT = 65535 - 7117
 COMPRESSION_MODULE = zstandard
-#COMPRESSION_MODULE = gzip
+# COMPRESSION_MODULE = gzip
 
 
 ## calling utilities ###########################################################
-def call(method: str, port: Optional[int] = None, *args, **kwargs):
+def call(method: str, port: Optional[int] = None, blocking: bool = True, *args, **kwargs):
     port = port if port is not None else DEFAULT_PORT
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REQ)
     sock.connect("tcp://localhost:%s" % str(port))
     msg2send = cp.dumps((sys.path, COMPRESSION_MODULE.compress(cp.dumps((method, args, kwargs)))))
     sock.send(msg2send)
-    return cp.loads(COMPRESSION_MODULE.decompress(sock.recv()))
+    if blocking:
+        return cp.loads(COMPRESSION_MODULE.decompress(sock.recv()))
+    else:
+
+        def fn():
+            try:
+                msg = sock.recv(flags=zmq.NOBLOCK)
+                return cp.loads(COMPRESSION_MODULE.decompress(msg))
+            except zmq.ZMQError:
+                return "NOT_ARRIVED_YET"
+
+        return fn
 
 
 solve = lambda *args, **kw: call("solve", solve.port, *args, **kw)

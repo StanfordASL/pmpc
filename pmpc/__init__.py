@@ -20,6 +20,7 @@ SOLVE_KWS = {
     "slew_rate",
     "u_slew",
     "cost_fn",
+    "solver_edit_fn",
     "method",
     "solver_settings",
     "solver_state",

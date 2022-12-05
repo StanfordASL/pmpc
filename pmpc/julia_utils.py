@@ -1,10 +1,13 @@
-##^# library imports ###########################################################
-import os, sys, time
+#### library imports ###########################################################
+import os
+import time
+
 import numpy as np
+import jax
+from jax import numpy as jnp
 
-
-##$#############################################################################
-##^# loading julia and including the library source files in julia #############
+################################################################################
+#### loading julia and including the library source files in julia #############
 def load_julia(verbose=False):
     t = time.time()
     try:
@@ -47,30 +50,46 @@ def load_julia(verbose=False):
     return jl
 
 
-##^# memory layout conversion routines #########################################
-def py2jl(x, keep_ndims=1):
-    n = len(np.shape(x))
-    keep, batch = keep_ndims, n - keep_ndims
+#### memory layout conversion routines #########################################
+def py2jl(x, keep: int = 1):
+    # n = len(np.shape(x))
+    n = x.ndim
+    # keep, batch = keep_ndims, n - keep_ndims
     return np.transpose(
-        x, tuple(range(-keep, 0)) + tuple(range(batch - 1, -1, -1))
+        # x, tuple(range(-keep, 0)) + tuple(range(batch - 1, -1, -1))
+        x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1))
     )
 
 
-def jl2py(x, keep_ndims=1):
-    n = len(np.shape(x))
-    keep, batch = keep_ndims, n - keep_ndims
+def jl2py(x, keep: int = 1):
+    #n = len(np.shape(x))
+    n = x.ndim
+    # keep, batch = keep_ndims, n - keep_ndims
     return np.transpose(
-        x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep))
+        # x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep))
+        x, tuple(range(n - 1, keep - 1, -1)) + tuple(range(0, keep))
     )
 
 
-##$#############################################################################
-##^# broadcasting and wrappers for batched julia function ######################
+#### optimized memory layout conversion routines ###############################
+@jax.jit
+def py2jl_jit(x, order):
+    n = x.ndim
+    # return jnp.transpose(x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1)))
+    return jnp.transpose(x, order)
+
+
+@jax.jit
+def jl2py_jit(x, keep_ndims=1):
+    n = len(jnp.shape(x))
+    keep, batch = keep_ndims, n - keep_ndims
+    return jnp.transpose(x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep)))
+
+
+################################################################################
+#### broadcasting and wrappers for batched julia function ######################
 def broadcast_args(*args):
-    args = [
-        np.atleast_2d(z).reshape((-1, z.shape[-1])) if z is not None else None
-        for z in args
-    ]
+    args = [np.atleast_2d(z).reshape((-1, z.shape[-1])) if z is not None else None for z in args]
     return args
 
 
@@ -89,4 +108,4 @@ def wrap_fn(fn, out_dims=1):
     return closure
 
 
-##$#############################################################################
+################################################################################
