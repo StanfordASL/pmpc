@@ -1,16 +1,17 @@
+import gc
+import gzip
 import pickle
 import signal
 import sys
-from typing import Optional
 import time
 import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Value
+from typing import Optional
 
 import cloudpickle as cp
 import zmq
 import zstandard
-import gzip
 
 from .scp_mpc import solve as solve_
 from .scp_mpc import tune_scp as tune_scp_
@@ -101,6 +102,7 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
 
         # always respond
         sock.send(COMPRESSION_MODULE.compress(cp.dumps(None)))
+        gc.collect()
     sock.close()
 
 

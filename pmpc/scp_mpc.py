@@ -12,7 +12,7 @@ from . import julia_utils as ju
 from .utils import TablePrinter
 
 jl = None
-JULIA_SOLVE_FNS = dict() # attribute look up is expensive (~ 2 ms every time)
+JULIA_SOLVE_FNS = dict()  # attribute look up is expensive (~ 2 ms every time)
 print_fn = lambda *args, **kwargs: print(*args, **kwargs)
 
 
@@ -21,7 +21,7 @@ def ensure_julia():
 
     if jl is None:
         jl = ju.load_julia()
-        #JULIA_SOLVE_FNS["admm"] = jl.PMPC.admm_solve
+        # JULIA_SOLVE_FNS["admm"] = jl.PMPC.admm_solve
         JULIA_SOLVE_FNS["lqp"] = jl.PMPC.lqp_solve
         JULIA_SOLVE_FNS["socp"] = jl.PMPC.lsocp_solve
 
@@ -180,7 +180,7 @@ def scp_solve(
     slew_rate: float = 0.0,
     u_slew: Optional[np.ndarray] = None,
     cost_fn: Optional[Callable] = None,
-    solver_edit_fn: Optional[Callable] = None,
+    extra_cstrs_fn: Optional[Callable] = None,
     method: str = "socp",
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
@@ -275,9 +275,15 @@ def scp_solve(
         fx = fx.reshape((M, N, xdim, xdim))
         fu = fu.reshape((M, N, xdim, udim))
 
+        # augment the cost or add extra constraints ################################################
         X_ref_, U_ref_ = _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
-        if solver_edit_fn is not None:
-            solver_edit_fn(solver_settings, X_prev, U_prev)
+        if extra_cstrs_fn is not None:
+            solver_settings["extra_cstrs"] = tuple(extra_cstrs_fn(X_prev, U_prev))
+        if "extra_cstrs" in solver_settings:
+            solver_settings["extra_cstrs"] = tuple([
+                [(arg.tolist() if hasattr(arg, "tolist") else arg) for arg in extra_cstr]
+                for extra_cstr in solver_settings["extra_cstrs"]
+            ])
 
         args_dyn = (f, fx, fu, x0, X_prev, U_prev)
         args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
