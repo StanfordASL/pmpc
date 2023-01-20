@@ -13,7 +13,7 @@ from dubins_car import f_np as f_fn, fx_np as fx_fn, fu_np as fu_fn
 
 
 def f_fx_fu_fn(X_prev, U_prev):
-    x, u, p = X_prev, U_prev, np.array([0.3])
+    x, u, p = X_prev, U_prev, np.array([1.0, 1.0, 0.3])
     return f_fn(x, u, p), fx_fn(x, u, p), fu_fn(x, u, p)
 
 
@@ -37,9 +37,9 @@ if __name__ == "__main__":
     opts = dict(verbose=True, u_l=u_l, u_u=u_u)
     args = (f_fx_fu_fn, Q, R, x0, X_ref, U_ref, X_prev, U_prev)
 
-    ret = pmpc.tune_scp(*args, **opts)
-    opts["rho_res_x"], opts["rho_res_u"] = ret
-    X, U, data = pmpc.solve(*args, max_iters=100, **opts)
+    #ret = pmpc.tune_scp(*args, **opts)
+    #opts["rho_res_x"], opts["rho_res_u"] = ret
+    X, U, data = pmpc.solve(*args, max_it=100, **opts)
     #X, U = X[0], U[0]
 
     #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)

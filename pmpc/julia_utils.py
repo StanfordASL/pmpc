@@ -3,8 +3,6 @@ import os
 import time
 
 import numpy as np
-import jax
-from jax import numpy as jnp
 
 ################################################################################
 #### loading julia and including the library source files in julia #############
@@ -70,20 +68,24 @@ def jl2py(x, keep: int = 1):
         x, tuple(range(n - 1, keep - 1, -1)) + tuple(range(0, keep))
     )
 
-
 #### optimized memory layout conversion routines ###############################
-@jax.jit
-def py2jl_jit(x, order):
-    n = x.ndim
-    # return jnp.transpose(x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1)))
-    return jnp.transpose(x, order)
+try:
+    import jax
+    from jax import numpy as jnp
+    @jax.jit
+    def py2jl_jit(x, order):
+        n = x.ndim
+        # return jnp.transpose(x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1)))
+        return jnp.transpose(x, order)
 
 
-@jax.jit
-def jl2py_jit(x, keep_ndims=1):
-    n = len(jnp.shape(x))
-    keep, batch = keep_ndims, n - keep_ndims
-    return jnp.transpose(x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep)))
+    @jax.jit
+    def jl2py_jit(x, keep_ndims=1):
+        n = len(jnp.shape(x))
+        keep, batch = keep_ndims, n - keep_ndims
+        return jnp.transpose(x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep)))
+except:
+    jax, jnp, py2jl, jl2py = None, None, None, None
 
 
 ################################################################################

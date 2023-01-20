@@ -260,6 +260,7 @@ def scp_solve(
     field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
     fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
     tp = TablePrinter(field_names, fmts=fmts)
+    solver_settings = solver_settings if solver_settings is not None else dict()
 
     min_viol = math.inf
 
@@ -280,11 +281,12 @@ def scp_solve(
         if extra_cstrs_fn is not None:
             solver_settings["extra_cstrs"] = tuple(extra_cstrs_fn(X_prev, U_prev))
         if "extra_cstrs" in solver_settings:
-            solver_settings["extra_cstrs"] = tuple([
-                [(arg.tolist() if hasattr(arg, "tolist") else arg) for arg in extra_cstr]
-                for extra_cstr in solver_settings["extra_cstrs"]
-            ])
-
+            solver_settings["extra_cstrs"] = tuple(
+                [
+                    [(arg.tolist() if hasattr(arg, "tolist") else arg) for arg in extra_cstr]
+                    for extra_cstr in solver_settings["extra_cstrs"]
+                ]
+            )
         args_dyn = (f, fx, fu, x0, X_prev, U_prev)
         args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
         args_cstr = (x_l, x_u, u_l, u_u)
