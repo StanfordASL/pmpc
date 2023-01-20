@@ -11,11 +11,6 @@ def load_julia(verbose=False):
     try:
         import julia
 
-        # path = os.path.abspath(os.path.expanduser("~/.local/lib/sys_pmpc.so"))
-        # if os.path.isfile(path):
-        #    julia.Julia(sysimage=path)
-        # else:
-        #    julia.Julia()
         julia.Julia()
         recompiled = False
     except Exception as e:
@@ -28,15 +23,7 @@ def load_julia(verbose=False):
         recompiled = True
     from julia import Main as jl
 
-    # jl.using("PMPC")
-    jl.include(
-        os.path.expanduser(
-            os.path.join(
-                "~/Dropbox/stanford",
-                "sensitivity_analysis/pmpc/PMPC.jl/src/PMPC.jl",
-            )
-        )
-    )
+    jl.using("PMPC")
 
     if verbose:
         print("Loading Julia took %e s" % (time.time() - t))
