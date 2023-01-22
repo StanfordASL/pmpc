@@ -21,9 +21,9 @@ def ensure_julia():
 
     if jl is None:
         jl = ju.load_julia()
-        # JULIA_SOLVE_FNS["admm"] = jl.PMPC.admm_solve
-        JULIA_SOLVE_FNS["lqp"] = jl.PMPC.lqp_solve
-        JULIA_SOLVE_FNS["socp"] = jl.PMPC.lsocp_solve
+        # JULIA_SOLVE_FNS["admm"] = jl.admm_solve
+        JULIA_SOLVE_FNS["lqp"] = jl.lqp_solve
+        JULIA_SOLVE_FNS["socp"] = jl.lsocp_solve
 
 
 ##$#############################################################################
