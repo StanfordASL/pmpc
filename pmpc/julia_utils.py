@@ -1,5 +1,5 @@
 #### library imports ###########################################################
-i.mport os
+import os
 import time
 
 import numpy as np
