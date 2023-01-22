@@ -1,5 +1,5 @@
 #### library imports ###########################################################
-import os
+i.mport os
 import time
 
 import numpy as np
@@ -72,7 +72,7 @@ try:
         keep, batch = keep_ndims, n - keep_ndims
         return jnp.transpose(x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep)))
 except:
-    jax, jnp, py2jl, jl2py = None, None, None, None
+    jax, jnp, py2jl_jit, jl2py_jit = None, None, None, None
 
 
 ################################################################################
