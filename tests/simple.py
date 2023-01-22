@@ -20,13 +20,6 @@ def f_fx_fu_fn(X_prev, U_prev):
 if __name__ == "__main__":
     M, N, xdim, udim = 1, 30, 4, 2
 
-    #Q = np.tile(np.eye(xdim), (M, N, 1, 1))
-    #R = np.tile(1e-2 * np.eye(udim), (M, N, 1, 1))
-    #x0 = np.tile(np.ones(xdim), (M, 1))
-    #X_ref, U_ref = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
-    #X_prev, U_prev = np.zeros((M, N, xdim)), np.zeros((M, N, udim))
-    #u_l, u_u = -1 * np.ones((M, N, udim)), 1 * np.ones((M, N, udim))
-
     Q = np.tile(np.eye(xdim), (N, 1, 1))
     R = np.tile(1e-2 * np.eye(udim), (N, 1, 1))
     x0 = np.tile(np.ones(xdim), (1,))
