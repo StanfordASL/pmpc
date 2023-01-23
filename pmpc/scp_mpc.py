@@ -22,8 +22,8 @@ def ensure_julia():
     if jl is None:
         jl = ju.load_julia()
         # JULIA_SOLVE_FNS["admm"] = jl.admm_solve
-        JULIA_SOLVE_FNS["lqp"] = jl.lqp_solve
-        JULIA_SOLVE_FNS["socp"] = jl.lsocp_solve
+        JULIA_SOLVE_FNS["qp"] = jl.lqp_solve
+        JULIA_SOLVE_FNS["cone"] = jl.lsocp_solve
 
 
 ##$#############################################################################
@@ -82,7 +82,7 @@ def aff_solve(
     x_u: np.ndarray,
     u_l: np.ndarray,
     u_u: np.ndarray,
-    method: str = "socp",
+    method: str = "cone",
     solver_settings: Optional[Dict[str, Any]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Any]:
     """Solve a single instance of a linearized MPC problem."""
@@ -181,7 +181,7 @@ def scp_solve(
     u_slew: Optional[np.ndarray] = None,
     cost_fn: Optional[Callable] = None,
     extra_cstrs_fn: Optional[Callable] = None,
-    method: str = "socp",
+    method: str = "cone",
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
     filter_method: str = "",
@@ -215,7 +215,7 @@ def scp_solve(
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
         u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
         cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. Defaults to None.
-        method (str, optional): Underlying affine solver method to call. Defaults to "lqp".
+        method (str, optional): Underlying affine solver method to call. Defaults to "cone".
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
         solver_state (Optional[Dict[str, Any]], optional): Solver state. Defaults to None.
         filter_method (str, optional): Filter method to choose. Defaults to "" which means no filter.
