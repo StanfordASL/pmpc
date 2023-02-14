@@ -62,6 +62,16 @@ def atleast_nd(x: Optional[np.ndarray], n: int):
     else:
         return x.reshape((1,) * max(n - x.ndim, 0) + x.shape)
 
+def to_numpy_f64(x):
+    if isinstance(x, np.ndarray) and x.dtype == np.float64:
+        return x
+    elif isinstance(x, np.ndarray):
+        return x.astype(np.float64)
+    elif isinstance(x, (float, int)):
+        return x
+    else:
+        return np.array(x, dtype=np.float64)
+
 
 def aff_solve(
     f: np.ndarray,
@@ -95,9 +105,9 @@ def aff_solve(
     X_ref, U_ref = atleast_nd(X_ref, 3), atleast_nd(U_ref, 3)
     x_l, x_u, u_l, u_u = [atleast_nd(z, 3) for z in [x_l, x_u, u_l, u_u]]
 
-    x_l, x_u, u_l, u_u = [ju.py2jl(z, 1) for z in [x_l, x_u, u_l, u_u]]
+    x_l, x_u, u_l, u_u = [ju.py2jl(to_numpy_f64(z), 1) for z in [x_l, x_u, u_l, u_u]]
     args = [
-        ju.py2jl(z, d)
+        ju.py2jl(to_numpy_f64(z), d)
         for (z, d) in zip(
             [x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref],
             [1, 1, 2, 2, 1, 1, 2, 2, 1, 1],
@@ -107,7 +117,7 @@ def aff_solve(
 
     solver_settings = copy(solver_settings) if solver_settings is not None else dict()
     if u_slew is not None:
-        solver_settings["slew_um1"] = u_slew
+        solver_settings["slew_um1"] = to_numpy_f64(u_slew)
     if slew_rate is not None:
         solver_settings["slew_reg"] = slew_rate
 

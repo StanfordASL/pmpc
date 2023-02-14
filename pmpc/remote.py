@@ -1,3 +1,4 @@
+import os
 import gc
 import gzip
 import pickle
@@ -8,26 +9,35 @@ import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Value
 from typing import Optional
+from socket import gethostname
 
 import cloudpickle as cp
 import zmq
 import zstandard
+
+try:
+    import redis
+except ModuleNotFoundError:
+    redis = None
 
 from .scp_mpc import solve as solve_
 from .scp_mpc import tune_scp as tune_scp_
 
 SUPPORTED_METHODS = dict(solve=solve_, tune_scp=tune_scp_)
 DEFAULT_PORT = 65535 - 7117
+DEFAULT_HOSTNAME = "localhost"
 COMPRESSION_MODULE = zstandard
-# COMPRESSION_MODULE = gzip
+HOSTNAME = gethostname()
+PID = os.getpid()
 
 
 ## calling utilities ###########################################################
-def call(method: str, port: Optional[int] = None, blocking: bool = True, *args, **kwargs):
+def call(method: str, hostname: Optional[str], port: Optional[int] = None, blocking: bool = True, *args, **kwargs):
+    hostname = hostname if hostname is not None else DEFAULT_HOSTNAME
     port = port if port is not None else DEFAULT_PORT
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REQ)
-    sock.connect("tcp://localhost:%s" % str(port))
+    sock.connect(f"tcp://{hostname}:{str(port)}")
     msg2send = cp.dumps((sys.path, COMPRESSION_MODULE.compress(cp.dumps((method, args, kwargs)))))
     sock.send(msg2send)
     if blocking:
@@ -49,6 +59,7 @@ solve.port = DEFAULT_PORT
 tune_scp = lambda *args, **kw: call("tune_scp", tune_scp.port, *args, **kw)
 tune_scp.port = DEFAULT_PORT
 
+
 ################################################################################
 ## server utilities ############################################################
 def start_server(port: int = DEFAULT_PORT, verbose: bool = False):
@@ -64,6 +75,17 @@ def start_server(port: int = DEFAULT_PORT, verbose: bool = False):
 ################################################################################
 ## server routine ##############################################################
 def server_(exit_flag, port=DEFAULT_PORT, **kw):
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    redis_key, redis_update = f"pmpc_worker_{HOSTNAME}_{PID}", time.time() - 10.0
+    if redis is not None:
+        try:
+            rconn = redis.Redis(
+                host=os.environ["REDIS_HOST"], password=os.environ["REDIS_PASSWORD"]
+            )
+        except KeyError:
+            print("Could not find REDIS_HOST OR REDIS_PASSWORD in os.environ")
+            rconn = None
+
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REP)
     sock.bind("tcp://*:%s" % str(port))
@@ -73,6 +95,10 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
         if is_msg_there:
             msg = sock.recv()
         else:
+            if rconn is not None and time.time() - redis_update > 10.0:
+                rconn.set(redis_key, f"{HOSTNAME}:{port}")
+                rconn.expire(redis_key, 60)
+                redis_update = time.time()
             continue
 
         try:
@@ -80,17 +106,16 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
         except (pickle.UnpicklingError, EOFError):
             continue
 
-        # t = time.time()
         for path in syspath:
             if path not in sys.path:
                 sys.path.append(path)
-        # print("Updating path took %9.4e s" % (time.time() - t))
-
+        error_str = ""
         try:
             method, args, kwargs = cp.loads(COMPRESSION_MODULE.decompress(data))
-        # except (pickle.UnpicklingError, EOFError, TypeError, zstd.ZstdError):
-        except (pickle.UnpicklingError, EOFError, TypeError, COMPRESSION_MODULE.ZstdError):
+        except (pickle.UnpicklingError, EOFError, TypeError, COMPRESSION_MODULE.ZstdError, ModuleNotFoundError):
             method = "UNSUPPORTED"
+            error_str = traceback.format_exc()
+            print(error_str)
         if method in SUPPORTED_METHODS:
             try:
                 ret = SUPPORTED_METHODS[method](*args, **kwargs)
@@ -98,16 +123,20 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
                 sock.send(compressed)
                 continue
             except Exception as e:
-                traceback.print_exc()
+                error_str = traceback.format_exc()
+                print(error_str)
 
         # always respond
-        sock.send(COMPRESSION_MODULE.compress(cp.dumps(None)))
+        sock.send(COMPRESSION_MODULE.compress(cp.dumps(error_str)))
         gc.collect()
+    if rconn is not None:
+        rconn.delete(redis_key)
     sock.close()
 
 
 class Server:
     def __init__(self, port=DEFAULT_PORT):
+        self.port = port
         self.exit_flag = Value("b", False)
         self.process = Process(target=server_, args=(self.exit_flag, port))
         self.old_signal_handler = signal.signal(signal.SIGINT, self.sighandler)
@@ -117,6 +146,7 @@ class Server:
         if self.process is not None:
             self.exit_flag.value = True
             self.process.join()
+            self.process.close()
             self.process, self.exit_flag = None, None
 
     def sighandler(self, signal, frame):

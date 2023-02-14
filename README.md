@@ -25,6 +25,9 @@ This is non-linear dynamics finite horizon MPC solver with feasibility TODO
   - [Consensus Optimization for Control under Uncertainty](#consensus-optimization-for-control-under-uncertainty)
   - [Non-convex Cost Example](#non-convex-cost-example)
   - [Arbitrary Constraints Example](#arbitrary-constraints-example)
+    - [Linear Constraints](#linear-constraints)
+    - [Second-order Cone Constraints (SOCP)](#second-order-cone-constraints-socp)
+    - [Exponential Cone](#exponential-cone)
   - [Convex solver selection](#convex-solver-selection)
 
 # Installation
@@ -255,7 +258,34 @@ def cost_fn(X, U):
 
 ## Arbitrary Constraints Example
 
-TODO
+Arbitrary convex (cone) constraints can be introduced in a canonical form via a callaback which recomputes them at every SCP iteration. This allows to encode non-convex constraints via their SCP convexification.
+
+The canonical form for a convex problem is given by
+$$
+\begin{aligned}
+& \text{minimize} && c^T z \\
+& \text{such that} && A_i z \leq_{\mathcal{K}} b_i ~~ \forall i
+\end{aligned}
+$$
+where $A z \leq_{\mathcal{K}} b$ refers to a cone constraint. The three supported cone constraints are
+
+### Linear Constraints
+
+Simply $A z \leq b$ 
+
+### Second-order Cone Constraints (SOCP)
+Mathematically
+$$
+||A_{2:n} z - b_{2:n}||_2 \leq a_1^T z - b_1
+$$
+or in code
+```python
+np.linalg.norm(A[1:, :] @ z - b[1:]) <= A[0, :].T @ z - b[0]
+```
+
+### Exponential Cone
+
+
 
 ## Convex solver selection
 
