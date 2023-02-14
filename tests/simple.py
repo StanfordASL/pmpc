@@ -1,7 +1,6 @@
-import pickle, sys, time, pdb, os, sys
+import sys, os, sys
 
-import matplotlib.pyplot as plt, numpy as np, scipy.sparse as sp
-import cvxpy as cp, scipy.sparse.linalg
+import matplotlib.pyplot as plt, numpy as np
 
 dirname = os.path.abspath(os.path.dirname(__file__))
 sys.path = [os.path.join(dirname, "..")] + sys.path
@@ -32,13 +31,13 @@ if __name__ == "__main__":
 
     for solver in ["ecos", "osqp", "cosmo"]:
         #ret = pmpc.tune_scp(*args, **opts)
-        #opts["rho_res_x"], opts["rho_res_u"] = ret
+        #opts["reg_x"], opts["reg_u"] = ret
         opts["solver_settings"] = dict(solver=solver)
         X, U, data = pmpc.solve(*args, max_it=100, **opts)
         #X, U = X[0], U[0]
 
         #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)
-        #opts["rho_res_x"], opts["rho_res_u"] = ret
+        #opts["reg_x"], opts["reg_u"] = ret
         #X, U, data = pmpc.accelerated_scp_solve(*args, max_iters=100, **opts)
         #X, U = X[0], U[0]
 

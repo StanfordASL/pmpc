@@ -15,14 +15,14 @@ def install_julia_package():
         from julia import Main as jl
         success = True
     except julia.core.UnsupportedPythonError as e:
-        pass
+        success = False
     if not success:
         try:
             julia.install()
             from julia import Main as jl
             success = True
         except julia.core.UnsupportedPythonError as e:
-            pass
+            success = False
     if not success:
         try:
             julia.Julia(compiled_modules=False)

@@ -4,9 +4,7 @@ import time
 from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import tqdm
 
 from . import julia_utils as ju
 from .utils import TablePrinter
@@ -61,6 +59,7 @@ def atleast_nd(x: Optional[np.ndarray], n: int):
         return None
     else:
         return x.reshape((1,) * max(n - x.ndim, 0) + x.shape)
+
 
 def to_numpy_f64(x):
     if isinstance(x, np.ndarray) and x.dtype == np.float64:
@@ -391,6 +390,9 @@ def tune_scp(
     savefig: Optional[str] = None,
     **kwargs,
 ):
+    import matplotlib.pyplot as plt
+    from tqdm import tqdm
+
     reg_ratio = kwargs.get("reg_ratio", 1e-1)
 
     reg_list = kwargs.get("reg_rng", np.logspace(*reg_rng, sample_nb))

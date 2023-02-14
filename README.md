@@ -27,7 +27,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
   - [Arbitrary Constraints](#arbitrary-constraints)
     - [Linear Constraints](#linear-constraints)
     - [Second-order Cone Constraints (SOCP)](#second-order-cone-constraints-socp)
-    - [Exponential Cone](#exponential-cone)
+    - [Exponential Cone Constraints](#exponential-cone-constraints)
   - [Solver selection](#solver-selection)
 - [Particle (consensus/contingency) optimization](#particle-consensuscontingency-optimization)
 - [Warm-start support](#warm-start-support)
@@ -269,7 +269,7 @@ or in code
 np.linalg.norm(A[1:, :] @ z - b[1:]) <= A[0, :].T @ z - b[0]
 ```
 
-### Exponential Cone
+### Exponential Cone Constraints
 
 The exponential cone is defined as a 3 output matrix expression (the image of
 the cone matrix is of dimension 3). We follow the convention from [JuMP.jl](https://jump.dev/JuMP.jl/stable/tutorials/conic/tips_and_tricks/#Exponential-Cone)

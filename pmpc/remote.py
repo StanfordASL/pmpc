@@ -61,10 +61,16 @@ def call(
         return fn
 
 
-solve = lambda *args, **kw: call("solve", solve.port, *args, **kw)
+solve = lambda *args, **kw: call("solve", solve.hostname, solve.port, solve.blocking, *args, **kw)
+solve.hostname = DEFAULT_HOSTNAME
 solve.port = DEFAULT_PORT
-tune_scp = lambda *args, **kw: call("tune_scp", tune_scp.port, *args, **kw)
+solve.blocking = True
+tune_scp = lambda *args, **kw: call(
+    "tune_scp", tune_scp.hostname, tune_scp.port, tune_scp.blocking, *args, **kw
+)
+tune_scp.hostname = DEFAULT_HOSTNAME
 tune_scp.port = DEFAULT_PORT
+tune_scp.blocking = True
 
 
 ################################################################################
@@ -92,7 +98,7 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
                 rconn = redis.Redis(host=redis_host, password=redis_password)
             else:
                 rconn = redis.Redis(host=redis_host)
-        except (KeyError, redis.ConnectionError):
+        except redis.ConnectionError:
             print(f"Could not connect to redis at {redis_host} with password {redis_password}.")
             rconn = None
 
@@ -105,10 +111,13 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
         if is_msg_there:
             msg = sock.recv()
         else:
-            if rconn is not None and time.time() - redis_update > 10.0:
-                redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
-                rconn.set(redis_key, f"{HOSTNAME}:{port}")
-                rconn.expire(redis_key, 60)
+            if redis is not None and rconn is not None and time.time() - redis_update > 10.0:
+                try:
+                    redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
+                    rconn.set(redis_key, f"{HOSTNAME}:{port}")
+                    rconn.expire(redis_key, 60)
+                except redis.ConnectionError:
+                    pass
                 redis_update = time.time()
             continue
 
@@ -179,7 +188,9 @@ if __name__ == "__main__":
         "--port", "-p", type=int, default=DEFAULT_PORT, help="TCP port on which to start the server"
     )
     parser.add_argument("--verbose", "-v", action="store_true")
-    parser.add_argument("--worker-num", "-n", type=int, help="Number of workers to start")
+    parser.add_argument(
+        "--worker-num", "-n", type=int, help="Number of workers to start", default=1
+    )
     args = parser.parse_args()
     assert args.worker_num > 0
 
