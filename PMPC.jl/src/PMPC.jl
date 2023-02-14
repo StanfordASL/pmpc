@@ -10,14 +10,15 @@ export solve!, solve
 export prox_setup!, prox_reset!, prox!
 export split_fbvars
 
-export lqp_solve, lsocp_solve
+export lqp_solve, lcone_solve
 export rollout, dynamics_violation, make_prob, make_probs
 export PMPCs_ctrl, MPCs_ctrl
 
 using LinearAlgebra, SparseArrays, Printf, Base.Threads, SuiteSparse, Suppressor
 using OSQP
 using REPL
-using JuMP, MathOptInterface, MosekTools, ECOS, COSMO
+using JuMP, MathOptInterface, ECOS
+using MosekTools, COSMO
 const MOI = MathOptInterface
 using Infiltrator
 
@@ -26,7 +27,7 @@ include("qp.jl")
 include("osqp.jl")
 include("jump.jl")
 include("lqp.jl")
-include("socp.jl")
+include("cone.jl")
 include("main.jl")
 include("memory_utils.jl")
 

@@ -23,7 +23,7 @@ def ensure_julia():
         jl = ju.load_julia()
         # JULIA_SOLVE_FNS["admm"] = jl.admm_solve
         JULIA_SOLVE_FNS["qp"] = jl.lqp_solve
-        JULIA_SOLVE_FNS["cone"] = jl.lsocp_solve
+        JULIA_SOLVE_FNS["cone"] = jl.lcone_solve
 
 
 ##$#############################################################################
@@ -92,7 +92,6 @@ def aff_solve(
     x_u: np.ndarray,
     u_l: np.ndarray,
     u_u: np.ndarray,
-    method: str = "cone",
     solver_settings: Optional[Dict[str, Any]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Any]:
     """Solve a single instance of a linearized MPC problem."""
@@ -113,6 +112,8 @@ def aff_solve(
             [1, 1, 2, 2, 1, 1, 2, 2, 1, 1],
         )
     ]
+    solver_settings.setdefault("solver", "ecos")
+    method = "qp" if solver_settings["solver"] == "osqp" else "cone"
     solve_fn = JULIA_SOLVE_FNS[method]
 
     solver_settings = copy(solver_settings) if solver_settings is not None else dict()
@@ -190,8 +191,7 @@ def scp_solve(
     slew_rate: float = 0.0,
     u_slew: Optional[np.ndarray] = None,
     cost_fn: Optional[Callable] = None,
-    extra_cstrs_fn: Optional[Callable] = None,
-    method: str = "cone",
+    extra_cstrs_fns: Optional[Callable] = None,
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
     filter_method: str = "",
@@ -225,7 +225,6 @@ def scp_solve(
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
         u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
         cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. Defaults to None.
-        method (str, optional): Underlying affine solver method to call. Defaults to "cone".
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
         solver_state (Optional[Dict[str, Any]], optional): Solver state. Defaults to None.
         filter_method (str, optional): Filter method to choose. Defaults to "" which means no filter.
@@ -288,8 +287,8 @@ def scp_solve(
 
         # augment the cost or add extra constraints ################################################
         X_ref_, U_ref_ = _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
-        if extra_cstrs_fn is not None:
-            solver_settings["extra_cstrs"] = tuple(extra_cstrs_fn(X_prev, U_prev))
+        if extra_cstrs_fns is not None:
+            solver_settings["extra_cstrs"] = tuple(extra_cstrs_fns(X_prev, U_prev))
         if "extra_cstrs" in solver_settings:
             solver_settings["extra_cstrs"] = tuple(
                 [
@@ -302,7 +301,7 @@ def scp_solve(
         args_cstr = (x_l, x_u, u_l, u_u)
         solver_settings = solver_settings if solver_settings is not None else dict()
         solver_settings["solver_state"] = solver_state
-        kw = dict(method=method, solver_settings=solver_settings)
+        kw = dict(solver_settings=solver_settings)
 
         t_aff_solve = time.time()
         X, U, solver_data = aff_solve(*args_dyn, *args_cost, *args_cstr, **kw)

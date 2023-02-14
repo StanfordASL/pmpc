@@ -1,60 +1,60 @@
+#!/usr/bin/env python3
+
 import os, sys
 from setuptools import setup, find_packages
-from subprocess import Popen
-from shutil import rmtree
+from setuptools.command.install import install
+from setuptools.command.develop import develop
+
+
+# custom julia installation script for the PMPC module #######
+def install_julia_package():
+    print("Installing the julia python support...")
+    import julia
+
+    try:
+        from julia import Main as jl
+    except julia.core.UnsupportedPythonError as e:
+        julia.install()
+        from julia import Main as jl
+
+    print("Installing the PMPC package...")
+    try:
+        install_PMPC = """
+        using Pkg
+        Pkg.develop(PackageSpec(path="%s"))
+        """ % os.path.join(
+            os.path.abspath(os.path.dirname(__file__)), "PMPC.jl"
+        )
+        jl.eval(install_PMPC)
+    except Exception as e:
+        print(e)
+        pass
+
+
+# taken from https://stackoverflow.com/questions/20288711/post-install-script-with-python-setuptools
+class PostDevelopCommand(develop):
+    """Post-installation for development mode."""
+
+    def run(self):
+        develop.run(self)
+        install_julia_package()
+
+
+class PostInstallCommand(install):
+    """Post-installation for installation mode."""
+
+    def run(self):
+        install.run(self)
+        install_julia_package()
+
 
 # perform setup ##############################################
 setup(
     name="pmpc",
     version="0.5",
     packages=find_packages(),
-    install_requires=[],
+    install_requires=["numpy", "julia", "zstandard", "pyzmq", "cloudpickle", "redis"],
     dependency_links=[],
     include_package_data=True,
+    cmdclass=dict(develop=PostDevelopCommand, install=PostInstallCommand),
 )
-
-# custom rules below # #########################################################
-action = None if len(sys.argv) < 2 else sys.argv[1]
-
-# custom julia installation script for the PMPC module #######
-if __name__ == "__main__" and action == "install":
-    #import julia
-
-    #try:
-    #    from julia import Main as jl
-    #except julia.core.UnsupportedPythonError as e:
-    #    julia.install()
-    #    from julia import Main as jl
-
-    #try:
-    #    jl.using("PMPC")
-    #    first_installation = False
-    #except julia.core.JuliaError as e:
-    #    first_installation = True
-
-    #try:
-    #    install_PMPC = """
-    #    using Pkg
-    #    Pkg.develop(PackageSpec(path="%s"))
-    #    """ % os.path.join(
-    #        os.path.abspath(os.path.dirname(__file__)), "PMPC.jl"
-    #    )
-    #    jl.eval(install_PMPC)
-    #except Exception as e:
-    #    print(e)
-    #    pass
-
-    #if first_installation:
-    #    path = os.path.join(
-    #        os.path.dirname(__file__), "resources/ecos_repair/update_libecos.py"
-    #    )
-    #    p = Popen(["python3", path])
-    #    p.wait()
-    pass
-
-if __name__ == "__main__" and action == "clean":
-    dirname = os.path.abspath(os.path.dirname(__file__))
-    flist = ["build", "dist", "pmpc.egg-info"]
-    for fname in flist:
-        if os.path.isdir(fname):
-            rmtree(os.path.join(dirname, fname))

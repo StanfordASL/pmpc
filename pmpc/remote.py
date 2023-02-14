@@ -32,7 +32,14 @@ PID = os.getpid()
 
 
 ## calling utilities ###########################################################
-def call(method: str, hostname: Optional[str], port: Optional[int] = None, blocking: bool = True, *args, **kwargs):
+def call(
+    method: str,
+    hostname: Optional[str] = None,
+    port: Optional[int] = None,
+    blocking: bool = True,
+    *args,
+    **kwargs,
+):
     hostname = hostname if hostname is not None else DEFAULT_HOSTNAME
     port = port if port is not None else DEFAULT_PORT
     ctx = zmq.Context()
@@ -76,19 +83,22 @@ def start_server(port: int = DEFAULT_PORT, verbose: bool = False):
 ## server routine ##############################################################
 def server_(exit_flag, port=DEFAULT_PORT, **kw):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    redis_key, redis_update = f"pmpc_worker_{HOSTNAME}_{PID}", time.time() - 10.0
+    redis_update = time.time() - 10.0
     if redis is not None:
         try:
-            rconn = redis.Redis(
-                host=os.environ["REDIS_HOST"], password=os.environ["REDIS_PASSWORD"]
-            )
+            redis_host = os.environ.get("REDIS_HOST", "localhost")
+            redis_password = os.environ.get("REDIS_PASSWORD", None)
+            if redis_password:
+                rconn = redis.Redis(host=redis_host, password=redis_password)
+            else:
+                rconn = redis.Redis(host=redis_host)
         except KeyError:
-            print("Could not find REDIS_HOST OR REDIS_PASSWORD in os.environ")
+            print(f"Could not connect to redis at {redis_host} with password {redis_password}.")
             rconn = None
 
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REP)
-    sock.bind("tcp://*:%s" % str(port))
+    sock.bind(f"tcp://*:{port}")
     while not exit_flag.value:
         time.sleep(1e-3)
         is_msg_there = sock.poll(100)  # in milliseconds
@@ -96,6 +106,7 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
             msg = sock.recv()
         else:
             if rconn is not None and time.time() - redis_update > 10.0:
+                redis_key = (f"pmpc_worker_{HOSTNAME}_{PID}:{HOSTNAME}:{port}",)
                 rconn.set(redis_key, f"{HOSTNAME}:{port}")
                 rconn.expire(redis_key, 60)
                 redis_update = time.time()
@@ -112,7 +123,13 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
         error_str = ""
         try:
             method, args, kwargs = cp.loads(COMPRESSION_MODULE.decompress(data))
-        except (pickle.UnpicklingError, EOFError, TypeError, COMPRESSION_MODULE.ZstdError, ModuleNotFoundError):
+        except (
+            pickle.UnpicklingError,
+            EOFError,
+            TypeError,
+            COMPRESSION_MODULE.ZstdError,
+            ModuleNotFoundError,
+        ):
             method = "UNSUPPORTED"
             error_str = traceback.format_exc()
             print(error_str)

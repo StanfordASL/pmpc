@@ -1,7 +1,8 @@
 # `pmpc`
-High-level Python Particle Sequential Convex Programming Model Predictive Control (SCP PMPC) interface.
+Python-interface Particle Sequential Convex Programming Model Predictive Control (SCP PMPC) interface.
 
-This is non-linear dynamics finite horizon MPC solver with feasibility TODO
+This is non-linear dynamics finite horizon MPC solver with consensus
+optimization capability, support for arbitrary constraints and arbitrary cost.
 
 # Table of Contents 
 - [`pmpc`](#pmpc)
@@ -10,7 +11,6 @@ This is non-linear dynamics finite horizon MPC solver with feasibility TODO
   - [Obtaining (a dynamically linked version of) Python](#obtaining-a-dynamically-linked-version-of-python)
   - [Obtaining Julia](#obtaining-julia)
   - [Obtaining `pyjulia`](#obtaining-pyjulia)
-  - [Installation of this package](#installation-of-this-package)
 - [Basic Usage](#basic-usage)
   - [Defining dynamics](#defining-dynamics)
   - [Defining Cost](#defining-cost)
@@ -24,26 +24,27 @@ This is non-linear dynamics finite horizon MPC solver with feasibility TODO
 - [Advanced Usage](#advanced-usage)
   - [Consensus Optimization for Control under Uncertainty](#consensus-optimization-for-control-under-uncertainty)
   - [Non-convex Cost Example](#non-convex-cost-example)
-  - [Arbitrary Constraints Example](#arbitrary-constraints-example)
+  - [Arbitrary Constraints](#arbitrary-constraints)
     - [Linear Constraints](#linear-constraints)
     - [Second-order Cone Constraints (SOCP)](#second-order-cone-constraints-socp)
     - [Exponential Cone](#exponential-cone)
-  - [Convex solver selection](#convex-solver-selection)
+  - [Solver selection](#solver-selection)
+- [Particle (consensus/contingency) optimization](#particle-consensuscontingency-optimization)
+- [Warm-start support](#warm-start-support)
 
 # Installation
 
-This package consists of the high level Python interface `pmpc` and the low level solver utilities `PMPC.jl`.
+Installation can be done by cloning this repository and issuing `pip install .`
 
-The best way to clone this repository is to do so with the low-level `PMPC.jl` module included
-```bash
-$ git clone --recursive https://github.com/StanfordASL/pmpc.git
-```
-or, alternatively
 ```bash
 $ git clone https://github.com/StanfordASL/pmpc.git
 $ cd pmpc
-$ git submodule update --init
+$ pip install .
 ```
+
+*Note: you must have [julia](https://julialang.org/) in your system PATH.*
+
+Further subsections explain some **optional** installation steps.
 
 ## Obtaining (a dynamically linked version of) Python 
 
@@ -84,20 +85,6 @@ $ python3
 >>> assert (jl.sin(2.0) - math.sin(2.0)) < 1e-9
 ```
 
-## Installation of this package
-
-From the root of this project
-```bash
-$ pip install . # to install the pmpc Python module
-``` 
-to install the Python package `pmpc`.
-
-From the root of this project
-```bash
-$ jl -e 'using Pkg; Pkg.develop(PackageSpec(path="PMPC.jl"))' 
-```
-to install the Julia core solver `PMPC.jl`.
-
 # Basic Usage
 
 The solver is capable of MPC consensus optimization for several system instantiations. For the basic usage, we'll focus on a single system MPC.
@@ -136,9 +123,9 @@ $$J = \sum_{i=0}^N
 
 *Note: Initial state, x0, is assumed constant and thus does not feature in the cost.*
 
-*Note: When handling controls, we'll always have np.shape(U) == (N, udim)*
+*Note: When handling controls, we'll always have `np.shape(U) == (N, udim)`*
 
-*Note: When handling states, we'll have np.shape(X) == (N + 1, xdim) with x0 included at the beginning or np.shape(X) == (N, xdim) with x0 NOT INCLUDED. X[:, -1] always refers to the state N, whereas U[:, -1] always refers to control N - 1.*
+*Note: When handling states, we'll have either `np.shape(X) == (N + 1, xdim)` with `x0` included at the beginning or `np.shape(X) == (N, xdim)` with `x0` NOT INCLUDED. `X[:, -1]` always refers to the state N, whereas `U[:, -1]` always refers to control N - 1.*
 
 Thus, an example call would be
 
@@ -178,9 +165,6 @@ solution if the dynamics are not sufficiently smooth.
 - `res_tol` - deviation tolerance past which solution is accepted (measure of convergence)
 - `slew_rate` - the quadratic penalty between time-consecutive controls (encourages smooth controls)
 - `u_slew` - the previous action taken to align the first plan action with (useful for smooth receding horizon control)
-- `method` - which solver type to use: `"cone"` for general cone support and `"qp"` for only quadratic programs
-  - `"qp"` is slightly faster, but supports only linear inequalities
-  - `"cone"` used by default
 
 ## Additional Dynamics Settings
 
@@ -202,7 +186,7 @@ should take arbitrary `X`, `U` and return a tuple
 
 I highly recommend using an auto-diff library to produce the linearizations to avoid unnecessary bugs.
 
-- `extra_cstrs_fn` is an optional callable which returns **a list** of conic constraints given arbitrary `X, U`
+- `extra_cstrs_fns` is an optional callable which returns **a list** of conic constraints given arbitrary `X, U`
   - a conic constraint $G z - h \in \mathcal{K}$, (e.g., $A z - b \leq 0$) consists of a tuple of 8 elements
     - `l` - the number of non-positive orthant constraints (an integer)
     - `q` - a list with the sizes of second order cone constraints (list of integers)
@@ -212,6 +196,8 @@ I highly recommend using an auto-diff library to produce the linearizations to a
     - `h` - the right hand side vector for the constraint
     - `c_left` - the additive linear cost augmentation for existing variables
     - `c_right` - the linear (minimization) cost for new variables to introduce
+
+ *Note: `cost_fn` is expected to return a tuple, but `extra_cstrs_fns` must be a list of functions!*
 
 ### Variable Layout
 
@@ -256,7 +242,7 @@ def cost_fn(X, U):
     return cx, cu
 ```
 
-## Arbitrary Constraints Example
+## Arbitrary Constraints
 
 Arbitrary convex (cone) constraints can be introduced in a canonical form via a callaback which recomputes them at every SCP iteration. This allows to encode non-convex constraints via their SCP convexification.
 
@@ -285,8 +271,44 @@ np.linalg.norm(A[1:, :] @ z - b[1:]) <= A[0, :].T @ z - b[0]
 
 ### Exponential Cone
 
+The exponential cone is defined as a 3 output matrix expression (the image of
+the cone matrix is of dimension 3). We follow the convention from [JuMP.jl](https://jump.dev/JuMP.jl/stable/tutorials/conic/tips_and_tricks/#Exponential-Cone)
+$$
+K_\text{exp} = \left\{ (x, y, z) \in \mathbb{R}^3 ~~~~ : ~~~~ y e^{x / y} \leq z, ~~~~ y \geq 0 \right\}
+$$
+for
+$$A v - b = (x, y, z)$$
+so $A \in \mathbb{R}^{n \times 3}$ and $b \in \mathbb{R}^3$.
 
+## Solver selection
 
-## Convex solver selection
+The underlying convex solver can be selected by passing a composite keyword argument
+
+```python
+sol = solve(
+  ...,
+  solver_settings = dict(solver="ecos") # for example, or "cosmo", "osqp", "mosek"
+)
+```
+
+- `ECOS` - FREE - very fast and very general (used by default)
+- `OSQP` - FREE - very fast, but only supports linear constraints
+- `COSMO` - FREE - very general, but it tends to run very slowly
+  - requires: `COSMO.jl` installed
+- `Mosek` - NOT FREE - extremely fast, but requires a (not free) license
+  - requires: a Mosek license, `MosekTools.jl` installed
+
+# Particle (consensus/contingency) optimization
 
 TODO
+
+# Warm-start support
+
+*Warm-start* in SCP MPC can refer to either
+- warm-starting the SCP procedure through a good `X_prev, U_prev` - this is supported
+- warm-starting the underlying convex solver - not supported
+
+Warm-starting of the SCP procedure by providing a good `X_prev, U_prev` guess is supported and very much encouraged for good SCP performance!
+
+Warm-starting of the underlying convex solver is currently not supported, as it does not lead to a noticeable
+performance improvement on problems we tested the solver on.

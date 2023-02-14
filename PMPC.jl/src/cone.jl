@@ -232,7 +232,7 @@ function Pqr2Gh(P::AA{F64, 2}, q::AA{F64, 1}, r::F64=0.0)
 end
 
 
-function lsocp_repr_Pq(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
+function lcone_repr_Pq(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
   M = length(probs)
   @assert M >= 1
   N, xdim, udim = probs[1].N, probs[1].xdim, probs[1].udim
@@ -400,9 +400,9 @@ function smoothen_linear_inequlities(
 end
 
 
-function lsocp_repr_Ab(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
+function lcone_repr_Ab(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
   return lqp_repr_Ab(probs, Nc; settings...)
 end
-function lsocp_repr_Gla(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
+function lcone_repr_Gla(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
   return lqp_repr_Gla(probs, Nc; settings...)
 end

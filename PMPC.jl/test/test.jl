@@ -732,7 +732,7 @@ function test_lqp_sens()
   return
 end
 
-function test_lsocp()
+function test_lcone()
   x0 = [5.0; 5.0; 5.0; 5.0]
   M, N, xdim, udim = 100, 30, 4, 2
 
@@ -762,7 +762,7 @@ function test_lsocp()
 
   lu, uu = -1 * ones(udim, N, M), 1 * ones(udim, N, M)
   PMPC.@ptime X, U =
-    PMPC.lsocp_solve(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; lu=lu, uu=uu) 4
+    PMPC.lcone_solve(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; lu=lu, uu=uu) 4
   PMPC.@ptime X2, U2 =
     PMPC.lqp_solve(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; lu=lu, uu=uu) 4
 
@@ -817,7 +817,7 @@ tests = [
   test_sens,
   test_constr,
   test_lqp_sens,
-  test_lsocp,
+  test_lcone,
 ]
 
 for test in tests

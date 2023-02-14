@@ -192,9 +192,9 @@ function lqp_solve(
   )
 end
 
-##^# large SOCP ################################################################
+##^# large cone ################################################################
 
-function lsocp_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
+function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
   settings = Dict{Symbol, Any}(Symbol(p.first) => p.second for p in settings)
   M = length(probs)
   xdim, udim, N = probs[1].xdim, probs[1].udim, probs[1].N
@@ -216,10 +216,10 @@ function lsocp_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
 
   begin
     # generate the matrices
-    Pq_G_left, Pq_G_right, Pq_h = lsocp_repr_Pq(probs, Nc)
+    Pq_G_left, Pq_G_right, Pq_h = lcone_repr_Pq(probs, Nc)
     Pq_G = hcat(Pq_G_left, Pq_G_right)
-    A, b = lsocp_repr_Ab(probs, Nc)
-    F, l, u = lsocp_repr_Gla(probs, Nc)
+    A, b = lcone_repr_Ab(probs, Nc)
+    F, l, u = lcone_repr_Gla(probs, Nc)
     F = hcat(F, spzeros(size(F, 1), size(Pq_G_right, 2)))
     A = hcat(A, spzeros(size(A, 1), size(Pq_G_right, 2)))
     # small value to incentivize anchor y and t otherwise t + y has a degree of freedom
@@ -315,12 +315,12 @@ function lsocp_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
   end
 
   # solve
-  @assert lowercase(settings[:solver]) in ["ecos", "cosmo", "jump"]
+  @assert lowercase(settings[:solver]) in ["ecos", "cosmo", "jump", "mosek"]
   if lowercase(settings[:solver]) == "ecos"
     sol = ECOS_solve(cone_problem; solver_settings...)
   elseif lowercase(settings[:solver]) == "cosmo"
     sol = COSMO_solve(cone_problem; solver_settings...)
-  elseif lowercase(settings[:solver]) == "jump"
+  elseif lowercase(settings[:solver]) in ["jump", "mosek"]
     sol = JuMP_solve(cone_problem; solver_settings...)
   end
 
@@ -348,7 +348,7 @@ function lsocp_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
   )
   return X, U, data
 end
-function lsocp_solve(
+function lcone_solve(
   x0::AA{T, 2},
   f::AA{T, 3},
   fx::AA{T, 4},
@@ -362,7 +362,7 @@ function lsocp_solve(
   settings...,
 ) where {T}
   probs = make_probs(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; settings...)
-  return lsocp_solve(probs; settings...)
+  return lcone_solve(probs; settings...)
 end
 ##$#############################################################################
 

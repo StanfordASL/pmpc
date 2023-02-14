@@ -30,28 +30,30 @@ if __name__ == "__main__":
     opts = dict(verbose=True, u_l=u_l, u_u=u_u)
     args = (f_fx_fu_fn, Q, R, x0, X_ref, U_ref, X_prev, U_prev)
 
-    #ret = pmpc.tune_scp(*args, **opts)
-    #opts["rho_res_x"], opts["rho_res_u"] = ret
-    X, U, data = pmpc.solve(*args, max_it=100, **opts)
-    #X, U = X[0], U[0]
+    for solver in ["ecos", "osqp", "cosmo"]:
+        #ret = pmpc.tune_scp(*args, **opts)
+        #opts["rho_res_x"], opts["rho_res_u"] = ret
+        opts["solver_settings"] = dict(solver=solver)
+        X, U, data = pmpc.solve(*args, max_it=100, **opts)
+        #X, U = X[0], U[0]
 
-    #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)
-    #opts["rho_res_x"], opts["rho_res_u"] = ret
-    #X, U, data = pmpc.accelerated_scp_solve(*args, max_iters=100, **opts)
-    #X, U = X[0], U[0]
+        #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)
+        #opts["rho_res_x"], opts["rho_res_u"] = ret
+        #X, U, data = pmpc.accelerated_scp_solve(*args, max_iters=100, **opts)
+        #X, U = X[0], U[0]
 
-    plt.figure()
-    for r in range(xdim):
-        plt.plot(X[:, r], label="$x_%d$" % (r + 1))
-    plt.legend()
-    plt.tight_layout()
+        plt.figure()
+        plt.title(solver)
+        for r in range(xdim):
+            plt.plot(X[:, r], label="$x_%d$" % (r + 1))
+        plt.legend()
+        plt.tight_layout()
 
-    plt.figure()
-    for r in range(udim):
-        plt.plot(U[:, r], label="$u_%d$" % (r + 1))
-    plt.legend()
-    plt.tight_layout()
+        plt.figure()
+        plt.title(solver)
+        for r in range(udim):
+            plt.plot(U[:, r], label="$u_%d$" % (r + 1))
+        plt.legend()
+        plt.tight_layout()
 
-    plt.draw_all()
-    plt.pause(1e-1)
-    pdb.set_trace()
+    plt.show()
