@@ -8,9 +8,8 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
 - [`pmpc`](#pmpc)
 - [Table of Contents](#table-of-contents)
 - [Installation](#installation)
-  - [Obtaining (a dynamically linked version of) Python](#obtaining-a-dynamically-linked-version-of-python)
+  - [(Optional) Obtaining (a dynamically linked version of) Python](#optional-obtaining-a-dynamically-linked-version-of-python)
   - [Obtaining Julia](#obtaining-julia)
-  - [Obtaining `pyjulia`](#obtaining-pyjulia)
 - [Basic Usage](#basic-usage)
   - [Defining dynamics](#defining-dynamics)
   - [Defining Cost](#defining-cost)
@@ -46,7 +45,7 @@ $ pip install .
 
 Further subsections explain some **optional** installation steps.
 
-## Obtaining (a dynamically linked version of) Python 
+## (Optional) Obtaining (a dynamically linked version of) Python 
 
 The Python module uses [pyjulia](https://github.com/JuliaPy/pyjulia) to be able
 to call Julia from Python which has a limitation in that it works much better
@@ -70,20 +69,6 @@ $ pyenv activate {your venv name}
 You can download [Julia](https://julialang.org/), the programming language and interpreter, from [here](https://julialang.org/downloads/).
 
 Make sure Julia is in your `PATH`.
-
-## Obtaining `pyjulia`
-
-Once you have the desired version of Python, install `pyjulia`
-```bash
-$ pip install julia
-$ python3
->>> import julia
->>> julia.install()
-...
->>> from julia import Main as jl
->>> import math
->>> assert (jl.sin(2.0) - math.sin(2.0)) < 1e-9
-```
 
 # Basic Usage
 
