@@ -9,6 +9,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
 - [Table of Contents](#table-of-contents)
 - [Installation](#installation)
   - [(Optional) Obtaining (a dynamically linked version of) Python](#optional-obtaining-a-dynamically-linked-version-of-python)
+  - [Compilation Times and a Persistent Solver Process](#compilation-times-and-a-persistent-solver-process)
   - [Obtaining Julia](#obtaining-julia)
 - [Basic Usage](#basic-usage)
   - [Defining dynamics](#defining-dynamics)
@@ -62,6 +63,27 @@ With a working version of `pyenv`, an example might be
 $ env PYTHON_CONFIGURE_OPTS="--enable-shared" pyenv install 3.9.13
 $ pyenv virtualenv 3.9.13 {your venv name} 
 $ pyenv activate {your venv name}
+```
+
+## Compilation Times and a Persistent Solver Process
+
+A large downside of using a Julia for the core solver is that compilation needs
+to occur every time a new process is launched. This is exacerbated by
+[pyjulia](https://github.com/JuliaPy/pyjulia) which does not work well with
+not-dynamically linked python interpreters (most commonly used).
+
+To overcome compilation times, we can start a solver process once and the library can
+use that solver process repeatedly, even through script restarts.
+
+Use
+```bash
+$ python3 -m pmpc.remote
+```
+to start a persistent solver process.
+
+Next, from your script
+```python
+>>> from pmpc.remote import solve # instead of `from pmpc import solve`
 ```
 
 ## Obtaining Julia
@@ -279,9 +301,8 @@ sol = solve(
 - `ECOS` - FREE - very fast and very general (used by default)
 - `OSQP` - FREE - very fast, but only supports linear constraints
 - `COSMO` - FREE - very general, but it tends to run very slowly
-  - requires: `COSMO.jl` installed
 - `Mosek` - NOT FREE - extremely fast, but requires a (not free) license
-  - requires: a Mosek license, `MosekTools.jl` installed
+  - requires: a Mosek license
 
 # Particle (consensus/contingency) optimization
 
