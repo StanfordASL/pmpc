@@ -13,9 +13,22 @@ def install_julia_package():
 
     try:
         from julia import Main as jl
+        success = True
     except julia.core.UnsupportedPythonError as e:
-        julia.install()
-        from julia import Main as jl
+        pass
+    if not success:
+        try:
+            julia.install()
+            from julia import Main as jl
+            success = True
+        except julia.core.UnsupportedPythonError as e:
+            pass
+    if not success:
+        try:
+            julia.Julia(compiled_modules=False)
+            from julia import Main as jl
+        except julia.core.UnsupportedPythonError as e:
+            pass
 
     print("Installing the PMPC package...")
     try:

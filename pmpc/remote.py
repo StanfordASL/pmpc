@@ -81,7 +81,7 @@ def start_server(port: int = DEFAULT_PORT, verbose: bool = False):
 
 ################################################################################
 ## server routine ##############################################################
-def server_(exit_flag, port=DEFAULT_PORT, **kw):
+def _server(exit_flag, port=DEFAULT_PORT, **kw):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     redis_update = time.time() - 10.0
     if redis is not None:
@@ -92,7 +92,7 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
                 rconn = redis.Redis(host=redis_host, password=redis_password)
             else:
                 rconn = redis.Redis(host=redis_host)
-        except KeyError:
+        except (KeyError, redis.ConnectionError):
             print(f"Could not connect to redis at {redis_host} with password {redis_password}.")
             rconn = None
 
@@ -106,7 +106,7 @@ def server_(exit_flag, port=DEFAULT_PORT, **kw):
             msg = sock.recv()
         else:
             if rconn is not None and time.time() - redis_update > 10.0:
-                redis_key = (f"pmpc_worker_{HOSTNAME}_{PID}:{HOSTNAME}:{port}",)
+                redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
                 rconn.set(redis_key, f"{HOSTNAME}:{port}")
                 rconn.expire(redis_key, 60)
                 redis_update = time.time()
@@ -155,7 +155,7 @@ class Server:
     def __init__(self, port=DEFAULT_PORT):
         self.port = port
         self.exit_flag = Value("b", False)
-        self.process = Process(target=server_, args=(self.exit_flag, port))
+        self.process = Process(target=_server, args=(self.exit_flag, port))
         self.old_signal_handler = signal.signal(signal.SIGINT, self.sighandler)
         self.process.start()
 
@@ -179,9 +179,15 @@ if __name__ == "__main__":
         "--port", "-p", type=int, default=DEFAULT_PORT, help="TCP port on which to start the server"
     )
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--worker-num", "-n", type=int, help="Number of workers to start")
     args = parser.parse_args()
+    assert args.worker_num > 0
 
-    start_server(args.port, verbose=args.verbose)
+    if args.worker_num == 1:
+        start_server(args.port, verbose=args.verbose)
+    else:
+        for i in range(args.worker_num):
+            start_server(args.port + i, verbose=args.verbose)
     while True:
         time.sleep(1)
 ################################################################################
