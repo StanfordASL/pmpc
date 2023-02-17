@@ -7,13 +7,16 @@ import sys
 import time
 import traceback
 from argparse import ArgumentParser
-from multiprocessing import Process, Value
+from multiprocessing import Process, Value, Pool
 from typing import Optional
-from socket import gethostname
+from socket import gethostname, gethostbyname
+
+# from threading import Thread
 
 import cloudpickle as cp
 import zmq
 import zstandard
+import numpy as np
 
 try:
     import redis
@@ -42,22 +45,30 @@ def call(
 ):
     hostname = hostname if hostname is not None else DEFAULT_HOSTNAME
     port = port if port is not None else DEFAULT_PORT
-    ctx = zmq.Context()
-    sock = ctx.socket(zmq.REQ)
-    sock.connect(f"tcp://{hostname}:{str(port)}")
     msg2send = cp.dumps((sys.path, COMPRESSION_MODULE.compress(cp.dumps((method, args, kwargs)))))
-    sock.send(msg2send)
     if blocking:
+        ctx = zmq.Context()
+        sock = ctx.socket(zmq.REQ)
+        sock.connect(f"tcp://{hostname}:{str(port)}")
+        sock.send(msg2send)
         return cp.loads(COMPRESSION_MODULE.decompress(sock.recv()))
     else:
+        ctx = zmq.Context()
+        sock = ctx.socket(zmq.REQ)
+        sock.setsockopt(zmq.RCVTIMEO, 2000)
+        sock.setsockopt(zmq.SNDTIMEO, 2000)
+        sock.setsockopt(zmq.LINGER, 0)
+        sock.connect(f"tcp://{hostname}:{str(port)}")
+        sock.send(msg2send)
 
         def fn():
-            try:
-                msg = sock.recv(flags=zmq.NOBLOCK)
+            if sock.poll(1e-4) == zmq.POLLIN:
+                msg = sock.recv()
                 return cp.loads(COMPRESSION_MODULE.decompress(msg))
-            except zmq.ZMQError:
+            else:
                 return "NOT_ARRIVED_YET"
 
+        fn.sock, fn.ctx = sock, ctx
         return fn
 
 
@@ -85,6 +96,18 @@ def start_server(port: int = DEFAULT_PORT, verbose: bool = False):
     start_server.servers[port] = Server(port)
 
 
+def simple_call(hostname, port):
+    Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
+    f_fx_fu_fn = lambda x, u: (np.zeros((1, 2)), np.eye(2)[None, ...], np.ones((2, 1))[None, ...])
+    args = (f_fx_fu_fn, Q, R, x0)
+    blocking = True
+    call("solve", gethostbyname(hostname), port, blocking, *args, max_it=1, verbose=True)
+
+
+def send_simple_problem_for_precompilation(hostname, port):
+    Process(target=simple_call, args=(hostname, port)).start()
+
+
 ################################################################################
 ## server routine ##############################################################
 def _server(exit_flag, port=DEFAULT_PORT, **kw):
@@ -102,6 +125,8 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
             print(f"Could not connect to redis at {redis_host} with password {redis_password}.")
             rconn = None
 
+    before_first_run, precompiled = True, False
+
     ctx = zmq.Context()
     sock = ctx.socket(zmq.REP)
     sock.bind(f"tcp://*:{port}")
@@ -115,11 +140,15 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
                 try:
                     redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
                     rconn.set(redis_key, f"{HOSTNAME}:{port}")
-                    rconn.expire(redis_key, 60)
+                    rconn.expire(redis_key, 300 if before_first_run else 60)  # in seconds
                 except redis.ConnectionError:
                     pass
                 redis_update = time.time()
+            if not precompiled:
+                send_simple_problem_for_precompilation(gethostname(), port)
+                precompiled = True
             continue
+
 
         try:
             syspath, data = cp.loads(msg)
@@ -144,6 +173,7 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
             print(error_str)
         if method in SUPPORTED_METHODS:
             try:
+                before_first_run = False
                 ret = SUPPORTED_METHODS[method](*args, **kwargs)
                 compressed = COMPRESSION_MODULE.compress(cp.dumps(ret))
                 sock.send(compressed)
