@@ -22,6 +22,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
     - [Variable Layout](#variable-layout)
   - [Misc Settings](#misc-settings)
 - [Advanced Usage](#advanced-usage)
+  - [Multiple solver processes](#multiple-solver-processes)
   - [Consensus Optimization for Control under Uncertainty](#consensus-optimization-for-control-under-uncertainty)
   - [Non-convex Cost Example](#non-convex-cost-example)
   - [Arbitrary Constraints](#arbitrary-constraints)
@@ -333,7 +334,7 @@ The exponential cone is defined as a 3 output matrix expression (the image of
 the cone matrix is of dimension 3). We follow the convention from [JuMP.jl](https://jump.dev/JuMP.jl/stable/tutorials/conic/tips_and_tricks/#Exponential-Cone)
 
 $$
-K_\text{exp} = \left\{ (x, y, z) \in \mathbb{R}^3 ~~~~ : ~~~~ y e^{x / y} \leq z, ~~~~ y \geq 0 \right\}
+K_\text{exp} = \bigg\{ (x, y, z) \in \mathbb{R}^3 ~~~~ : ~~~~ y e^{x / y} \leq z, ~~~~ y \geq 0 \bigg\}
 $$
 
 for
