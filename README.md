@@ -271,7 +271,7 @@ problems = [generate_problem(...) for _ in range(32)]
 solutions = solve_problems(problems)
 ```
 
-We solve the discovery problem by making use of [redis](https://redis.io/), an in-memory key-value store (a database). 
+We solve the discovery problem by making use of [redis](https://redis.io/), an in-memory key-value store (a database). **You need to have a working `redis-server` running** (e.g., `sudo apt install redis-server`).
 
 *Note: Since our worker processes are TCP based, they can be run on any network connected computer (which has the copy of the python environment). As long as we can ensure that all computers can access a redis database where workers register.*
 
@@ -334,7 +334,7 @@ The exponential cone is defined as a 3 output matrix expression (the image of
 the cone matrix is of dimension 3). We follow the convention from [JuMP.jl](https://jump.dev/JuMP.jl/stable/tutorials/conic/tips_and_tricks/#Exponential-Cone)
 
 $$
-K_\text{exp} = \bigg\{ (x, y, z) \in \mathbb{R}^3 ~~~~ : ~~~~ y e^{x / y} \leq z, ~~~~ y \geq 0 \bigg\}
+K_\text{exp} = \lbrace (x, y, z) \in \mathbb{R}^3 ~~~~ : ~~~~ y e^{x / y} \leq z, ~~~~ y \geq 0 \rbrace
 $$
 
 for
