@@ -1,28 +1,20 @@
-import os
-import gc
-import gzip
-import pickle
-import signal
-import sys
-import time
-import traceback
+import os, gc, random, pickle, signal, sys, time, traceback
 from argparse import ArgumentParser
 from multiprocessing import Process, Value, Pool
-from typing import Optional
+from typing import Optional, Callable, Union, Any, Dict, List, Tuple
 from socket import gethostname, gethostbyname
+import psutil
+from copy import copy
 
-# from threading import Thread
-
-import cloudpickle as cp
-import zmq
-import zstandard
-import numpy as np
+import cloudpickle as cp, zmq, zstandard, numpy as np
+from tqdm import tqdm
 
 try:
     import redis
 except ModuleNotFoundError:
     redis = None
 
+from . import SOLVE_KWS
 from .scp_mpc import solve as solve_
 from .scp_mpc import tune_scp as tune_scp_
 
@@ -32,9 +24,15 @@ DEFAULT_HOSTNAME = "localhost"
 COMPRESSION_MODULE = zstandard
 HOSTNAME = gethostname()
 PID = os.getpid()
+REDIS_CONFIG = dict()
+if os.getenv("REDIS_HOST", None) is not None:
+    REDIS_CONFIG["host"] = gethostbyname(os.getenv("REDIS_HOST"))
+if os.getenv("REDIS_PORT", None) is not None:
+    REDIS_CONFIG["port"] = int(os.getenv("REDIS_PORT"))
+if os.getenv("REDIS_PASSWORD", None) is not None:
+    REDIS_CONFIG["password"] = os.getenv("REDIS_PASSWORD")
 
-
-## calling utilities ###########################################################
+## calling utilities ###############################################################################
 def call(
     method: str,
     hostname: Optional[str] = None,
@@ -42,7 +40,9 @@ def call(
     blocking: bool = True,
     *args,
     **kwargs,
-):
+) -> Union[Any, Callable]:
+    """Call a remote function from a list of pre-approved functions in this
+    library; blocking or not."""
     hostname = hostname if hostname is not None else DEFAULT_HOSTNAME
     port = port if port is not None else DEFAULT_PORT
     msg2send = cp.dumps((sys.path, COMPRESSION_MODULE.compress(cp.dumps((method, args, kwargs)))))
@@ -84,16 +84,19 @@ tune_scp.port = DEFAULT_PORT
 tune_scp.blocking = True
 
 
-################################################################################
-## server utilities ############################################################
-def start_server(port: int = DEFAULT_PORT, verbose: bool = False):
+# server utils #####################################################################################
+
+
+def start_server(
+    port: int = DEFAULT_PORT, verbose: bool = False, redis_config: Optional[Dict[str, Any]] = None
+):
     if not hasattr(start_server, "servers"):
         start_server.servers = dict()
     if port in start_server.servers.keys():
         raise RuntimeError("PMPC server on this port already exits")
     if verbose:
         print(f"Starting PMPC server on port: {port:d}")
-    start_server.servers[port] = Server(port)
+    start_server.servers[port] = Server(port, redis_config)
 
 
 def simple_call(hostname, port):
@@ -108,21 +111,19 @@ def send_simple_problem_for_precompilation(hostname, port):
     Process(target=simple_call, args=(hostname, port)).start()
 
 
-################################################################################
-## server routine ##############################################################
-def _server(exit_flag, port=DEFAULT_PORT, **kw):
+## server routine ##################################################################################
+def _server(exit_flag, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]] = None, **kw):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     redis_update = time.time() - 10.0
     if redis is not None:
         try:
-            redis_host = os.environ.get("REDIS_HOST", "localhost")
-            redis_password = os.environ.get("REDIS_PASSWORD", None)
-            if redis_password:
-                rconn = redis.Redis(host=redis_host, password=redis_password)
-            else:
-                rconn = redis.Redis(host=redis_host)
+            redis_config = redis_config if redis_config is not None else copy(REDIS_CONFIG)
+            if "host" in redis_config:
+                redis_config["host"] = gethostbyname(redis_config["host"])
+            rconn = redis.Redis(**redis_config)
+            rconn.keys("")  # query for connection status
         except redis.ConnectionError:
-            print(f"Could not connect to redis at {redis_host} with password {redis_password}.")
+            print(f"Could not connect to redis at {redis_config}")
             rconn = None
 
     before_first_run, precompiled = True, False
@@ -148,7 +149,6 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
                 send_simple_problem_for_precompilation(gethostname(), port)
                 precompiled = True
             continue
-
 
         try:
             syspath, data = cp.loads(msg)
@@ -191,10 +191,10 @@ def _server(exit_flag, port=DEFAULT_PORT, **kw):
 
 
 class Server:
-    def __init__(self, port=DEFAULT_PORT):
+    def __init__(self, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]] = None):
         self.port = port
         self.exit_flag = Value("b", False)
-        self.process = Process(target=_server, args=(self.exit_flag, port))
+        self.process = Process(target=_server, args=(self.exit_flag, port, redis_config))
         self.old_signal_handler = signal.signal(signal.SIGINT, self.sighandler)
         self.process.start()
 
@@ -210,25 +210,178 @@ class Server:
         self.old_signal_handler(signal, frame)
 
 
-################################################################################
-## module level access #########################################################
+# alternative & parallel solution interface ########################################################
+
+
+def solve_problem(
+    problem: Dict[str, Any], solve_fn: Callable = solve
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+    """Solve a single optimal control problem defined by as keyword only arguments.
+
+    Args:
+        problem (Dict[str, Any]): Problem specification, positional arguments provided as keywords.
+        solve (Callable, optional): Solve function. Defaults to in-process (non-remote) MPC solve.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray, Dict[str, Any]]: Solution to the optimal control problem.
+    """
+    problem = copy(problem)
+    f_fx_fu_fn, P = problem["f_fx_fu_fn"], problem["P"]
+    args = problem["Q"], problem["R"], problem["x0"]
+    problem = {k: v for (k, v) in problem.items() if k in SOLVE_KWS}
+    # problem = dict(problem, return_min_viol=False, min_viol_it0=50)
+    problem.setdefault("verbose", True)
+    if "extra_cstrs_fn_np" in problem:
+        problem["extra_cstr_fn"] = problem["extra_cstr_fn_np"]
+    return solve_fn(lambda X, U: f_fx_fu_fn(X, U, P), *args, **problem)
+
+
+def solve_problem_remote(
+    args: Tuple[Dict[str, Any], int]
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+    """Solve a single problem by a call to a remote server, blocking.
+
+    Args:
+        args (Tuple[Dict[str, Any], int]): Tuple of problem, specifying the
+        problem and port to expect the server on.
+
+    Returns:
+        _Tuple[np.ndarray, np.ndarray, Dict[str, Any]]: A solution to a single
+        problem obtained from the remote call to the server.
+    """
+    problem, hostname, port, blocking = args
+    return solve_problem(
+        problem,
+        solve_fn=lambda *args, **kwargs: call("solve", hostname, port, blocking, *args, **kwargs),
+    )
+
+
+WORKER_ADDRS = []
+LAST_WORKER_SCAN = time.time() - 60.0
+
+
+def rescan_workers(force: bool = False, redis_config: Optional[Dict[str, Any]] = None):
+    global LAST_WORKER_SCAN, WORKER_ADDRS
+    if redis is not None and (force or time.time() - LAST_WORKER_SCAN > 10.0):
+        try:
+            redis_config = redis_config if redis_config is not None else copy(REDIS_CONFIG)
+            if "host" in redis_config:
+                redis_config["host"] = gethostbyname(redis_config["host"])
+            rconn = redis.Redis(**redis_config)
+            rconn.keys("")  # query for connection status
+        except redis.ConnectionError:
+            print(f"Could not connect to redis at {redis_config}")
+            return
+        worker_keys = rconn.keys("pmpc_worker*")
+        WORKER_ADDRS = [
+            tuple(worker_key.decode("utf8").split("/")[1].split(":")) for worker_key in worker_keys
+        ]
+        if len(WORKER_ADDRS) == 0:
+            print("Could not find any PMPC workers registers in redis.")
+        LAST_WORKER_SCAN = time.time()
+
+
+def solve_problems(
+    problems: List[Dict[str, Any]],
+    verbose: bool = False,
+    randomize_assignment: bool = True,
+    rescan: bool = True,
+    max_solve_time: float = 20.0,
+    redis_config: Optional[Dict[str, Any]] = None,
+) -> List[Tuple[np.ndarray, np.ndarray, Dict[str, Any]]]:
+    """Solve problems in parallel by calls to remote workers on WORKER_ADDRS.
+
+    Args:
+        problems (List[Dict[str, Any]]): A list of SCP problems defined as keyword dictionaries.
+        verbose (bool, optional): Whether to print tqdm updates. Defaults to False.
+        randomize_assignment (bool, optional): Use workers in a random order. Defaults to True.
+        rescan (bool, optional): Whether to consult redis for workers. Defaults to True.
+        max_solve_time (float, optional): Maximum solution time past which worker is deemed dead.
+
+    Returns:
+        List[Tuple[np.ndarray, np.ndarray, Dict[str, Any]]]: A list of solutions from calls to scp_solve.
+    """
+
+    if rescan or len(WORKER_ADDRS) == 0:
+        rescan_workers(force=False, redis_config=redis_config)
+
+    workers = {worker_addr: None for worker_addr in WORKER_ADDRS}  # worker map
+    pending, results = list(range(len(problems))), dict()  # in and out job/result queue
+    pbar = tqdm(range(len(problems)), disable=not verbose)  # status bar
+    while len(results) < len(problems):
+        workers_items = list(workers.items())
+        if randomize_assignment:  # randomize worker order
+            random.shuffle(workers_items)
+        for (worker_addr, v) in workers_items:  # for each worker collect result or assign new job
+            if v is not None:
+                idx, results_fn, solve_start_time = v
+                ret = results_fn()
+                if ret == "NOT_ARRIVED_YET":  # the worker is not finished yet
+                    if time.time() - solve_start_time > max_solve_time:  # check if worker is dead
+                        print(f"PMPC Worker {worker_addr} is broken, we will use another worker.")
+                        # worker is broken
+                        pending.append(idx)
+                        results_fn.sock.close()
+                        results_fn.ctx.destroy()
+                        del workers[worker_addr]
+                    continue  # is working, leave it alone
+                results[idx], workers[worker_addr], v = ret, None, None  # is now free
+                pbar.update(1)
+            if v is None and len(pending) > 0:  # worker is done, we can assign it a new job
+                idx = pending.pop()
+                if problems[idx] is None:  # if the fed problem is None, just skip solving it
+                    results[idx] = None
+                else:
+                    workers[worker_addr] = (
+                        idx,
+                        solve_problem_remote((problems[idx], *worker_addr, False)),
+                        time.time(),
+                    )
+        if len(workers) == 0:  # all workers died
+            print("All PMPC workers deemed dead, rescanning all PMPC workers.")
+            rescan_workers(force=True)
+            workers = {worker_addr: None for worker_addr in WORKER_ADDRS}
+        time.sleep(1e-3)
+    return [results[i] for i in range(len(problems))]
+
+
+## module level access #############################################################################
 if __name__ == "__main__":
+    """Main routine."""
     parser = ArgumentParser()
     parser.add_argument(
         "--port", "-p", type=int, default=DEFAULT_PORT, help="TCP port on which to start the server"
     )
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument(
-        "--worker-num", "-n", type=int, help="Number of workers to start", default=1
+        "--worker-num",
+        "-n",
+        type=int,
+        help="Number of workers to start, 0 means number equal to physical CPU cores.",
+        default=1,
     )
+    parser.add_argument("--redis-host", type=str, help="Redis host", default=None)
+    parser.add_argument("--redis-port", type=str, help="Redis port", default=None)
+    parser.add_argument("--redis-password", type=str, help="Redis password", default=None)
     args = parser.parse_args()
-    assert args.worker_num > 0
+    if args.worker_num == 0:
+        args.worker_num = psutil.cpu_count(logical=False)
 
-    if args.worker_num == 1:
-        start_server(args.port, verbose=args.verbose)
-    else:
-        for i in range(args.worker_num):
-            start_server(args.port + i, verbose=args.verbose)
-    while True:
-        time.sleep(1)
-################################################################################
+    redis_config = copy(REDIS_CONFIG)
+    if args.redis_host is not None:
+        redis_config["host"] = args.redis_host
+    if args.redis_port is not None:
+        redis_config["port"] = args.redis_port
+    if args.redis_password is not None:
+        redis_config["password"] = args.redis_password
+
+    for i in range(args.worker_num):
+        start_server(args.port + i, verbose=args.verbose, redis_config=redis_config)
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        for (port, server) in start_server.servers.items():
+            print(f"Stopping server on port {port}")
+            server.stop()

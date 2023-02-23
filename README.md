@@ -120,10 +120,11 @@ np.shape(fu) == (N, xdim, udim)
 
 ## Defining Cost
 
-and a quadratic cost
 - `X_ref, Q` a reference and quadratic weight matrix for state cost
 - `U_ref, R` a reference and quadratic weight matrix for control cost
+
 The cost is given as 
+
 $$J = \sum_{i=0}^N 
 \frac{1}{2} (x^{(i+1)} - x_\text{ref}^{(i+1)}) Q^{(i)} (x^{(i+1)} - x_\text{ref}^{(i+1)}) + 
 \frac{1}{2} (u^{(i)} - u_\text{ref}^{(i)}) R^{(i)} (u^{(i)} - u_\text{ref}^{(i)})$$
@@ -151,7 +152,9 @@ Take a look at
 ## Solver Hyperparameters
 
 The solver has two scalar hyperparamters, the dynamics linearization deviation penalty for states and controls
-$$J_\text{deviation} = \sum_{i=0}^N \frac{1}{2} 
+
+$$
+J_\text{deviation} = \sum_{i=0}^N \frac{1}{2} 
 \rho_x (x^{(i+1)} - x_\text{prev}^{(i+1)})^T (x^{(i+1)} - x_\text{prev}^{(i+1)})
 + \rho_u (u^{(i)} - u_\text{prev}^{(i)})^T (u^{(i)} - u_\text{prev}^{(i)})
 $$
@@ -227,6 +230,54 @@ For consensus optimization the layout is
 
 # Advanced Usage
 
+## Multiple solver processes
+
+Launching multiple solver processes can be useful when many problems need to be solved. This presents some challenges
+- the solver needs to be able to discover existing, ready persistent worker processes
+  - we use [redis](https://redis.io/) here
+- batch of problem specifications need to be fed to a solution function
+  - we redefine the optimal control problem slightly as a set of keyword arguments for the `solve` function, positional arguments are now keywords arguments
+
+Launch
+```bash
+$ python3 -m pmpc.remote --help
+
+usage: remote.py [-h] [--port PORT] [--verbose] [--worker-num WORKER_NUM]
+                 [--redis-host REDIS_HOST] [--redis-port REDIS_PORT]
+                 [--redis-password REDIS_PASSWORD]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --port PORT, -p PORT  TCP port on which to start the server
+  --verbose, -v
+  --worker-num WORKER_NUM, -n WORKER_NUM
+                        Number of workers to start, 0 means number equal to
+                        physical CPU cores.
+  --redis-host REDIS_HOST
+                        Redis host
+  --redis-port REDIS_PORT
+                        Redis port
+  --redis-password REDIS_PASSWORD
+                        Redis password
+
+$ python3 -m pmpc.remote --worker-num 0 --redis-password my_redis_password
+```
+then
+```python
+from pmpc.remote import solve_problems
+
+problems = [generate_problem(...) for _ in range(32)]
+solutions = solve_problems(problems)
+```
+
+We solve the discovery problem by making use of [redis](https://redis.io/), an in-memory key-value store (a database). 
+
+*Note: Since our worker processes are TCP based, they can be run on any network connected computer (which has the copy of the python environment). As long as we can ensure that all computers can access a redis database where workers register.*
+
+We solve the problem specification by redefining the optimal control problem slightly. All arguments to the `solve` function are now keyword arguments **a problem is defined as a dictionary `Dict[str, Any]`**. 
+
+The `solve_problems` method solves a list of dictionary problem definitions and returns a list of solutions.
+
 ## Consensus Optimization for Control under Uncertainty
 
 For consensus control, simply 
@@ -254,12 +305,14 @@ def cost_fn(X, U):
 Arbitrary convex (cone) constraints can be introduced in a canonical form via a callaback which recomputes them at every SCP iteration. This allows to encode non-convex constraints via their SCP convexification.
 
 The canonical form for a convex problem is given by
+
 $$
 \begin{aligned}
 & \text{minimize} && c^T z \\
 & \text{such that} && A_i z \leq_{\mathcal{K}} b_i ~~ \forall i
 \end{aligned}
 $$
+
 where $A z \leq_{\mathcal{K}} b$ refers to a cone constraint. The three supported cone constraints are
 
 ### Linear Constraints
@@ -268,9 +321,7 @@ Simply $A z \leq b$
 
 ### Second-order Cone Constraints (SOCP)
 Mathematically
-$$
-||A_{2:n} z - b_{2:n}||_2 \leq a_1^T z - b_1
-$$
+$||A_{2:n} z - b_{2:n}||_2 \leq a_1^T z - b_1$
 or in code
 ```python
 np.linalg.norm(A[1:, :] @ z - b[1:]) <= A[0, :].T @ z - b[0]
@@ -280,11 +331,15 @@ np.linalg.norm(A[1:, :] @ z - b[1:]) <= A[0, :].T @ z - b[0]
 
 The exponential cone is defined as a 3 output matrix expression (the image of
 the cone matrix is of dimension 3). We follow the convention from [JuMP.jl](https://jump.dev/JuMP.jl/stable/tutorials/conic/tips_and_tricks/#Exponential-Cone)
+
 $$
 K_\text{exp} = \left\{ (x, y, z) \in \mathbb{R}^3 ~~~~ : ~~~~ y e^{x / y} \leq z, ~~~~ y \geq 0 \right\}
 $$
+
 for
+
 $$A v - b = (x, y, z)$$
+
 so $A \in \mathbb{R}^{n \times 3}$ and $b \in \mathbb{R}^3$.
 
 ## Solver selection
