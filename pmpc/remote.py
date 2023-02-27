@@ -86,70 +86,101 @@ tune_scp.blocking = True
 
 # server utils #####################################################################################
 
+SERVERS = dict()
+
 
 def start_server(
     port: int = DEFAULT_PORT, verbose: bool = False, redis_config: Optional[Dict[str, Any]] = None
 ):
-    if not hasattr(start_server, "servers"):
-        start_server.servers = dict()
-    if port in start_server.servers.keys():
+    if port in SERVERS.keys():
         raise RuntimeError("PMPC server on this port already exits")
     if verbose:
         print(f"Starting PMPC server on port: {port:d}")
-    start_server.servers[port] = Server(port, redis_config)
+    SERVERS[port] = Server(port, redis_config)
 
 
-def simple_call(hostname, port):
+def simple_call():
     Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
     f_fx_fu_fn = lambda x, u: (np.zeros((1, 2)), np.eye(2)[None, ...], np.ones((2, 1))[None, ...])
     args = (f_fx_fu_fn, Q, R, x0)
-    blocking = True
-    call("solve", gethostbyname(hostname), port, blocking, *args, max_it=1, verbose=True)
+    solve_(*args, max_it=1, verbose=True)
+    #blocking = True
+    #call("solve", gethostbyname(hostname), port, blocking, *args, max_it=1, verbose=True)
 
 
-def send_simple_problem_for_precompilation(hostname, port):
-    Process(target=simple_call, args=(hostname, port)).start()
+####################################################################################################
 
+def get_redis_connection(redis_config: Optional[Dict[str, Any]] = None) -> Optional["redis.Redis"]:
+    if redis is None:
+        return None
+    try:
+        redis_config = redis_config if redis_config is not None else copy(REDIS_CONFIG)
+        if "host" in redis_config:
+            redis_config["host"] = gethostbyname(redis_config["host"])
+        rconn = redis.Redis(**redis_config)
+        rconn.keys("")  # query for connection status
+    except redis.ConnectionError:
+        print(f"Could not connect to redis at {redis_config}")
+        rconn = None
+    return rconn
+
+
+def set_redis_status(rconn: Optional["redis.Redis"], port: int) -> None:
+    if redis is not None and rconn is not None:
+        try:
+            redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
+            rconn.set(redis_key, f"{HOSTNAME}:{port}")
+            rconn.expire(redis_key, 60)  # in seconds
+        except redis.ConnectionError:
+            pass
+
+
+def unset_redis_status(rconn: Optional["redis.Redis"], port: int) -> None:
+    if redis is not None and rconn is not None:
+        try:
+            redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
+            rconn.delete(redis_key)
+        except redis.ConnectionError:
+            pass
 
 ## server routine ##################################################################################
-def _server(exit_flag, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]] = None, **kw):
+
+def _server(
+    exit_flag, status_flag, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]] = None
+):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    redis_update = time.time() - 10.0
-    if redis is not None:
-        try:
-            redis_config = redis_config if redis_config is not None else copy(REDIS_CONFIG)
-            if "host" in redis_config:
-                redis_config["host"] = gethostbyname(redis_config["host"])
-            rconn = redis.Redis(**redis_config)
-            rconn.keys("")  # query for connection status
-        except redis.ConnectionError:
-            print(f"Could not connect to redis at {redis_config}")
-            rconn = None
 
-    before_first_run, precompiled = True, False
+    # bind to the zmq socket #######################################################################
+    try:
+        ctx = zmq.Context()
+        sock = ctx.socket(zmq.REP)
+        sock.bind(f"tcp://*:{port}")
+    except zmq.error.ZMQError:
+        print(f"Could not bind to port {port:d}")
+        status_flag.value = time.time() - 1e5  # indicate failure
+        return
 
-    ctx = zmq.Context()
-    sock = ctx.socket(zmq.REP)
-    sock.bind(f"tcp://*:{port}")
+    # precompile ###################################################################################
+    print("Starting precompilation...")
+    status_flag.value = time.time() + 60.0  # allow 60 seconds for precompilation
+    simple_call()
+    print("Precompilation done")
+
+    rconn, redis_update = get_redis_connection(redis_config), time.time() - 10.0
     while not exit_flag.value:
-        time.sleep(1e-3)
+        status_flag.value = time.time()
+        if time.time() - redis_update > 10.0:
+            set_redis_status(rconn, port)
+            redis_update = time.time()
+
+        # attempt to receive a message #############################################################
         is_msg_there = sock.poll(100)  # in milliseconds
         if is_msg_there:
             msg = sock.recv()
         else:
-            if redis is not None and rconn is not None and time.time() - redis_update > 10.0:
-                try:
-                    redis_key = f"pmpc_worker_{HOSTNAME}_{PID}/{HOSTNAME}:{port}"
-                    rconn.set(redis_key, f"{HOSTNAME}:{port}")
-                    rconn.expire(redis_key, 300 if before_first_run else 60)  # in seconds
-                except redis.ConnectionError:
-                    pass
-                redis_update = time.time()
-            if not precompiled:
-                send_simple_problem_for_precompilation(gethostname(), port)
-                precompiled = True
             continue
 
+        # we have received a message ###############################################################
         try:
             syspath, data = cp.loads(msg)
         except (pickle.UnpicklingError, EOFError):
@@ -171,9 +202,10 @@ def _server(exit_flag, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]]
             method = "UNSUPPORTED"
             error_str = traceback.format_exc()
             print(error_str)
+
+        # method is a string and message unpacking was successful ##################################
         if method in SUPPORTED_METHODS:
             try:
-                before_first_run = False
                 ret = SUPPORTED_METHODS[method](*args, **kwargs)
                 compressed = COMPRESSION_MODULE.compress(cp.dumps(ret))
                 sock.send(compressed)
@@ -182,19 +214,26 @@ def _server(exit_flag, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]]
                 error_str = traceback.format_exc()
                 print(error_str)
 
-        # always respond
+        # always respond ###########################################################################
         sock.send(COMPRESSION_MODULE.compress(cp.dumps(error_str)))
         gc.collect()
-    if rconn is not None:
-        rconn.delete(redis_key)
+        time.sleep(1e-3)
+    unset_redis_status(rconn, port)
     sock.close()
 
 
 class Server:
     def __init__(self, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]] = None):
         self.port = port
-        self.exit_flag = Value("b", False)
-        self.process = Process(target=_server, args=(self.exit_flag, port, redis_config))
+        self.process, self.exit_flag, self.status_flag = None, None, None
+        self.redis_config = redis_config
+        self.start()
+
+    def start(self):
+        self.exit_flag, self.status_flag = Value("b", False), Value("d", time.time())
+        self.process = Process(
+            target=_server, args=(self.exit_flag, self.status_flag, self.port, self.redis_config)
+        )
         self.old_signal_handler = signal.signal(signal.SIGINT, self.sighandler)
         self.process.start()
 
@@ -203,7 +242,15 @@ class Server:
             self.exit_flag.value = True
             self.process.join()
             self.process.close()
-            self.process, self.exit_flag = None, None
+            self.process, self.exit_flag, self.status_flag = None, None, None
+
+    def is_alive(self):
+        return time.time() - self.status_flag.value < 60.0
+
+    def kill(self):
+        if self.process is not None:
+            self.process.kill()
+            unset_redis_status(get_redis_connection(self.redis_config), self.port)
 
     def sighandler(self, signal, frame):
         self.stop()
@@ -360,6 +407,9 @@ if __name__ == "__main__":
         help="Number of workers to start, 0 means number equal to physical CPU cores.",
         default=1,
     )
+    parser.add_argument(
+        "--resurrect", type=bool, default=True, help="Whether to resurrect dead workers."
+    )
     parser.add_argument("--redis-host", type=str, help="Redis host", default=None)
     parser.add_argument("--redis-port", type=str, help="Redis port", default=None)
     parser.add_argument("--redis-password", type=str, help="Redis password", default=None)
@@ -380,8 +430,22 @@ if __name__ == "__main__":
 
     try:
         while True:
-            time.sleep(1)
+            server_items = list(SERVERS.items())
+            for (port, server) in server_items:
+                if not server.is_alive():
+                    print(f"Killing server on port {port}")
+                    server.kill()
+                    if args.resurrect:
+                        new_port = max(list(SERVERS.keys())) + 1
+                        print(f"Restarting dead server on port {new_port}")
+                        start_server(
+                            new_port,
+                            verbose=args.verbose,
+                            redis_config=redis_config,
+                        )
+                    del SERVERS[port]
+            time.sleep(1.0)
     except KeyboardInterrupt:
-        for (port, server) in start_server.servers.items():
+        for (port, server) in SERVERS.items():
             print(f"Stopping server on port {port}")
             server.stop()
