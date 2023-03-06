@@ -12,6 +12,7 @@ jaxm = init()
 Array = jaxm.jax.Array
 
 from pmpc.utils import TablePrinter
+from .convex_solver import ConvexSolver
 import jaxopt
 
 ####################################################################################################
@@ -62,47 +63,43 @@ def obj_fn(U: Array, args: Dict[str, List[Array]]) -> Array:
     J_slew = J_slew + jaxm.mean(slew_rate * jaxm.sum((U[..., 0, :] - u0_slew) ** 2, -1))
     J = J + jaxm.where(jaxm.isfinite(J_slew), J_slew, 0.0)
 
-    # extra cost
-    # J_cx, J_cu = jaxm.mean(jaxm.sum(cx * X, -1)), jaxm.mean(jaxm.sum(cu * U, -1))
-    # J = J + jaxm.where(jaxm.isfinite(J_cx), J_cx, 0.0)
-    # J = J + jaxm.where(jaxm.isfinite(J_cu), J_cu, 0.0)
-
     return jaxm.where(jaxm.isfinite(J), J, jaxm.inf)
 
 
 class Solver(Enum):
     BFGS = 0
     LBFGS = 1
+    CVX = 2
+
 
 
 opts = dict(
     maxiter=300,
     verbose=False,
-    #tol=1e-5,
     jit=True,
-    #min_stepsize=1e-9,
     linesearch="backtracking",
-    #maxls=100,
 )
-solvers = {
+SOLVERS = {
     Solver.BFGS: jaxopt.BFGS(obj_fn, **opts),
     Solver.LBFGS: jaxopt.LBFGS(obj_fn, **opts),
+    #Solver.CVX: ConvexSolver(obj_fn, **opts),
+    Solver.CVX: ConvexSolver(obj_fn, **dict(opts, maxls=20, linesearch="binary_search")),
 }
 
-run_methods = {k: jaxm.jit(solver.run) for k, solver in solvers.items()}
-update_methods = {k: jaxm.jit(solver.update) for k, solver in solvers.items()}
+RUN_METHODS = {k: jaxm.jit(solver.run) for k, solver in SOLVERS.items()}
+UPDATE_METHODS = {k: jaxm.jit(solver.update) for k, solver in SOLVERS.items()}
 
 
 @partial(jaxm.jit, static_argnums=(0,))
 def run_with_state(solver: int, z: Array, args: Dict[str, List[Array]], state, max_it: int = 100):
-    body_fn = lambda i, z_state: update_methods[solver](*z_state, args)
+    body_fn = lambda i, z_state: UPDATE_METHODS[solver](*z_state, args)
     z_state = body_fn(0, (z, state))
     return jaxm.jax.lax.fori_loop(1, max_it, body_fn, z_state)
 
 
 @partial(jaxm.jit, static_argnums=(0,))
 def init_state(solver: int, U_prev: Array, args: Dict[str, List[Array]]):
-    return solvers[solver].init_state(U_prev, args)
+    return SOLVERS[solver].init_state(U_prev, args)
 
 
 @partial(jaxm.jit, static_argnums=(0,))
@@ -122,27 +119,10 @@ def pinit_state(solver: int, U_prev: Array, args: Dict[str, List[Array]]):
         else None,
         (U_prev, args),
     )
-    return jaxm.jax.vmap(solvers[solver].init_state, in_axes=in_axes)(U_prev, args)
+    return jaxm.jax.vmap(SOLVERS[solver].init_state, in_axes=in_axes)(U_prev, args)
 
 
 ####################################################################################################
-# def rollout_step(x, u_p):
-#    u, p = u_p
-#    xp = f(x, u, p)
-#    return xp, xp
-#
-#
-# @jaxm.jit
-# def rollout(x0, U, P):
-#    """Rolls out dynamics into the future based on an initial state x0"""
-#    xs, x = [x0[..., None, :]], x0
-#    P = jaxm.broadcast_to(P, U.shape[:-1] + (P.shape[-1],))
-#
-#    UP = jaxm.swapaxes(jaxm.cat([U, P], -1), 0, -2)
-#    xs = jaxm.lax.scan(rollout_step, x0, (U.swapaxes(-2, 0), P.swapaxes(-2, 0)))[1].swapaxes(-2, 0)
-#    return jaxm.cat([x0[..., None, :], xs], -2)
-
-
 def rollout_step_fx(x, u_f_fx_fu_x_prev_u_prev):
     u, f, fx, fu, x_prev, u_prev = u_f_fx_fu_x_prev_u_prev
     xp = f + bmv(fx, x - x_prev) + bmv(fu, u - u_prev)
@@ -173,9 +153,6 @@ def Ft_ft_fn(x0, U, f, fx, fu, X_prev, U_prev):
     Ft_ = jaxm.moveaxis(Ft_, -3, 0)
     Ft, ft = Ft_, ft_
 
-    # ft = rollout(x0, U, p)[..., 1:, :]
-    # Ft = jaxm.jacobian(lambda U: rollout(x0, U, p)[..., 1:, :])(U)
-
     Ft, ft = Ft.reshape(bshape + (N * xdim, N * udim)), ft.reshape(bshape + (N * xdim,))
     return Ft, ft
 
@@ -186,33 +163,6 @@ def U2X(U, U_prev, Ft, ft):
     xdim = ft.shape[-1] // U.shape[-2]
     X = (bmv(Ft, vec(U - U_prev, 2)) + ft).reshape(bshape + (U.shape[-2], xdim))
     return X
-
-
-# def opt_fn(f_fx_fu_fn, x0, X_prev, U_prev, Q, R, X_ref, U_ref, **kw):
-#    state = None
-#    t = time.time()
-#    tp = TablePrinter(
-#        ["it", "elaps", "obj", "resid", "reg_x", "reg_u", "sol_err"],
-#        ["%04d"] + 3 * ["%.3e"] + 3 * ["%.1e"],
-#    )
-#    tp.print_header()
-#    for it in range(kw.get("max_it", int(1e3))):
-#        f, fx, fu = f_fx_fu_fn(jaxm.cat([x0[..., None, :], X_prev[..., :-1, :]], -2), U_prev)
-#        Ft, ft = Ft_ft_fn(x0, U_prev, f, fx, fu, X_prev, U_prev)
-#        reg_x, reg_u = kw.get("reg_x", 1e0), kw.get("reg_u", 1e0)
-#        args = Ft, ft, X_prev, U_prev, reg_x, reg_u, Q, R, X_ref, U_ref
-#        U_prev_, state = run_with_state(U_prev, *args, state=state, max_it=50)
-#        # U_prev_, state = run(U_prev, *args)
-#        X_prev_ = bmv(Ft, (U_prev_ - U_prev).reshape((U_prev.shape[:-2] + (-1,)))) + ft
-#        X_prev_ = X_prev_.reshape(X_prev.shape)
-#        residx = jaxm.max(jaxm.norm(X_prev_ - X_prev, axis=-1))
-#        residu = jaxm.max(jaxm.norm(U_prev_ - U_prev, axis=-1))
-#        resid = jaxm.maximum(residx, residu)
-#        X_prev, U_prev = X_prev_, U_prev_
-#        obj = obj_fn(U_prev, *args)
-#        tp.print_values([it, time.time() - t, obj, resid, reg_x, reg_u, state.error])
-#    tp.print_footer()
-#    return X_prev, U_prev
 
 
 ####################################################################################################
@@ -249,17 +199,20 @@ def aff_solve(
     args["slew"] = slew_rate, u_slew
     args["cstr"] = x_l, x_u, u_l, u_u, alpha
 
-    if solver_settings.get("solver", "BFGS").lower() == "BFGS".lower():
-        solver = Solver.BFGS
-    elif solver_settings.get("solver", "BFGS").lower() == "LBFGS".lower():
-        solver = Solver.LBFGS
+    default_solver = "CVX"
+    if solver_settings.get("solver", default_solver).lower() == "BFGS".lower():
+        solver, max_it = Solver.BFGS, 100
+    elif solver_settings.get("solver", default_solver).lower() == "LBFGS".lower():
+        solver, max_it = Solver.LBFGS, 100
+    elif solver_settings.get("solver", default_solver).lower() == "CVX".lower():
+        solver, max_it = Solver.CVX, 30
     else:
         msg = f"Solver {solver_settings.get('solver')} not supported."
         raise ValueError(msg)
     state = solver_settings.get("solver_state", None)
-    if state is None:
+    if state is None or solver_settings.get("solver", default_solver).lower() in ["CVX".lower()]:
         state = pinit_state(solver, U_prev, args)
-    U, state = prun_with_state(solver, U_prev, args, state)
+    U, state = prun_with_state(solver, U_prev, args, state, max_it=max_it)
 
     mask = jaxm.tile(
         jaxm.isfinite(state.value)[..., None, None], (1,) * state.value.ndim + U.shape[-2:]
@@ -384,7 +337,7 @@ def scp_solve(
     data = dict(solver_data=[], hist=[], sol_hist=[])
 
     field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u", "alpha"]
-    fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%.1e"]
+    fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%.1e", "%.1e", "%.1e"]
     tp = TablePrinter(field_names, fmts=fmts)
     solver_settings = solver_settings if solver_settings is not None else dict()
 
