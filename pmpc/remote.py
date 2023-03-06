@@ -1,12 +1,12 @@
-import os, gc, random, pickle, signal, sys, time, traceback
+import os, gc, random, pickle, signal, sys, time, traceback  # noqa: E401
 from argparse import ArgumentParser
-from multiprocessing import Process, Value, Pool
+from multiprocessing import Process, Value
 from typing import Optional, Callable, Union, Any, Dict, List, Tuple
 from socket import gethostname, gethostbyname
 import psutil
 from copy import copy
 
-import cloudpickle as cp, zmq, zstandard, numpy as np
+import cloudpickle as cp, zmq, zstandard, numpy as np  # noqa: E401
 from tqdm import tqdm
 
 try:
@@ -74,13 +74,19 @@ def call(
         return fn
 
 
-solve = lambda *args, **kw: call("solve", solve.hostname, solve.port, solve.blocking, *args, **kw)
+def solve(*args, **kw):
+    return call("solve", solve.hostname, solve.port, solve.blocking, *args, **kw)
+
+
 solve.hostname = DEFAULT_HOSTNAME
 solve.port = DEFAULT_PORT
 solve.blocking = True
-tune_scp = lambda *args, **kw: call(
-    "tune_scp", tune_scp.hostname, tune_scp.port, tune_scp.blocking, *args, **kw
-)
+
+
+def tune_scp(*args, **kw):
+    return call("tune_scp", tune_scp.hostname, tune_scp.port, tune_scp.blocking, *args, **kw)
+
+
 tune_scp.hostname = DEFAULT_HOSTNAME
 tune_scp.port = DEFAULT_PORT
 tune_scp.blocking = True
@@ -103,7 +109,11 @@ def start_server(
 
 def simple_call():
     Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
-    f_fx_fu_fn = lambda x, u: (np.zeros((1, 2)), np.eye(2)[None, ...], np.ones((2, 1))[None, ...])
+    f_fx_fu_fn = lambda x, u: ( # noqa: E731
+        np.zeros((1, 2)),
+        np.eye(2)[None, ...],
+        np.ones((2, 1))[None, ...],
+    )  
     args = (f_fx_fu_fn, Q, R, x0)
     solve_(*args, max_it=1, verbose=True)
     # blocking = True
@@ -215,7 +225,7 @@ def _server(
                 compressed = COMPRESSION_MODULE.compress(cp.dumps(ret))
                 sock.send(compressed)
                 continue
-            except Exception as e:
+            except Exception:
                 error_str = traceback.format_exc()
                 print(error_str)
 
@@ -351,7 +361,7 @@ def solve_problems(
         max_solve_time (float, optional): Maximum solution time past which worker is deemed dead.
 
     Returns:
-        List[Tuple[np.ndarray, np.ndarray, Dict[str, Any]]]: A list of solutions from calls to scp_solve.
+        List[Tuple[np.ndarray, np.ndarray, Dict[str, Any]]]: Solutions list from calls to scp_solve.
     """
 
     if rescan or len(WORKER_ADDRS) == 0:

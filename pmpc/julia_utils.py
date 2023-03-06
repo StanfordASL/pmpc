@@ -1,8 +1,8 @@
 #### library imports ###########################################################
-import os
 import time
 
 import numpy as np
+
 
 ################################################################################
 #### loading julia and including the library source files in julia #############
@@ -61,7 +61,6 @@ try:
     from jax import numpy as jnp
     @jax.jit
     def py2jl_jit(x, order):
-        n = x.ndim
         # return jnp.transpose(x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1)))
         return jnp.transpose(x, order)
 
@@ -71,7 +70,7 @@ try:
         n = len(jnp.shape(x))
         keep, batch = keep_ndims, n - keep_ndims
         return jnp.transpose(x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep)))
-except:
+except ModuleNotFoundError:
     jax, jnp, py2jl_jit, jl2py_jit = None, None, None, None
 
 

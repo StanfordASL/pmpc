@@ -1,3 +1,1 @@
-# intentionally blank
-
-from .jax_solver import *
+from .jax_solver import * # noqa: F403

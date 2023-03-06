@@ -1,4 +1,4 @@
-from .scp_mpc import *
+from .scp_mpc import * # noqa: F403
 
 """Keyword-compatible arguments in the solver scp solve call."""
 SOLVE_KWS = {

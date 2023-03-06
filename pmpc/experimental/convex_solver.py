@@ -1,11 +1,10 @@
-import os
 from enum import Enum
 from typing import NamedTuple
 from jfi import init
 
 jaxm = init()
 
-from jaxopt import base
+from jaxopt import base # noqa: E402
 
 
 class LineSearch(Enum):

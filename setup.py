@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import os, sys
+import os
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 from setuptools.command.develop import develop
@@ -11,23 +11,25 @@ def install_julia_package():
     print("Installing the julia python support...")
     import julia
 
+    jl = None
+
     try:
-        from julia import Main as jl
+        from julia import Main as jl 
         success = True
-    except julia.core.UnsupportedPythonError as e:
+    except julia.core.UnsupportedPythonError:
         success = False
     if not success:
         try:
             julia.install()
-            from julia import Main as jl
+            from julia import Main as jl # noqa: F811
             success = True
-        except julia.core.UnsupportedPythonError as e:
+        except julia.core.UnsupportedPythonError:
             success = False
     if not success:
         try:
             julia.Julia(compiled_modules=False)
-            from julia import Main as jl
-        except julia.core.UnsupportedPythonError as e:
+            from julia import Main as jl # noqa: F811
+        except julia.core.UnsupportedPythonError:
             pass
 
     print("Installing the PMPC package...")

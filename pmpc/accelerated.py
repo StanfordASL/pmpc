@@ -1,14 +1,15 @@
-import time
+import time, math # noqa: E401
 
 import numpy as np
 
-from .scp_mpc import ensure_julia, print_fn
+from .scp_mpc import print_fn, scp_solve
 from .utils import TablePrinter
 
 ##^# accelerated SCP ###########################################################
 # momentum_update = lambda zk, zkm1, it: zk + it / (it + 3) * (zk - zkm1)
 alf = 1.6
-momentum_update = lambda zk, zkm1, it: alf * zk + (1.0 - alf) * zkm1
+def momentum_update(zk, zkm1, it):
+    return alf * zk + (1.0 - alf) * zkm1
 
 
 def accelerated_scp_solve(

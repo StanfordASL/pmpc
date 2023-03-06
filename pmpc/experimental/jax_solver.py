@@ -9,17 +9,20 @@ from jfi import init
 
 jaxm = init()
 
+from pmpc.utils import TablePrinter # noqa: E402
+from .convex_solver import ConvexSolver # noqa: E402
+import jaxopt # noqa: E402
+
 Array = jaxm.jax.Array
 
-from pmpc.utils import TablePrinter
-from .convex_solver import ConvexSolver
-import jaxopt
 
 ####################################################################################################
 
 print_fn = print
-bmv = lambda A, x: (A @ x[..., None])[..., 0]
-vec = lambda x, n=2: x.reshape(x.shape[:-n] + (-1,))
+def bmv(A, x):
+    return (A @ x[..., None])[..., 0]
+def vec(x, n=2):
+    return x.reshape(x.shape[:-n] + (-1,))
 
 
 def atleast_nd(x: Optional[Array], n: int):
@@ -92,7 +95,8 @@ UPDATE_METHODS = {k: jaxm.jit(solver.update) for k, solver in SOLVERS.items()}
 
 @partial(jaxm.jit, static_argnums=(0,))
 def run_with_state(solver: int, z: Array, args: Dict[str, List[Array]], state, max_it: int = 100):
-    body_fn = lambda i, z_state: UPDATE_METHODS[solver](*z_state, args)
+    def body_fn(i, z_state):
+        return UPDATE_METHODS[solver](*z_state, args)
     z_state = body_fn(0, (z, state))
     return jaxm.jax.lax.fori_loop(1, max_it, body_fn, z_state)
 
@@ -132,7 +136,7 @@ def rollout_step_fx(x, u_f_fx_fu_x_prev_u_prev):
 @jaxm.jit
 def rollout_fx(x0, U, f, fx, fu, X_prev, U_prev):
     """Rolls out dynamics into the future based on an initial state x0"""
-    xs, x = [x0[..., None, :]], x0
+    xs = [x0[..., None, :]]
     X_prev = jaxm.cat([x0[..., None, :], X_prev[..., :-1, :]], -2)
     U, f, X_prev, U_prev = [jaxm.moveaxis(z, -2, 0) for z in [U, f, X_prev, U_prev]]
     fx, fu = [jaxm.moveaxis(z, -3, 0) for z in [fx, fu]]
@@ -273,7 +277,8 @@ def scp_solve(
     return_min_viol: bool = False,
     min_viol_it0: int = -1,
 ) -> Tuple[Array, Array, Dict[str, Any]]:
-    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with optional non-linear cost term.
+    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with 
+    optional non-linear cost term.
 
     Args:
         f_fx_fu_fn (Callable): Dynamics with linearization callable.
@@ -284,10 +289,10 @@ def scp_solve(
         U_ref (Optional[np.ndarray], optional): Reference control trajectory. Defaults to zeros.
         X_prev (Optional[np.ndarray], optional): Previous state solution. Defaults to x0.
         U_prev (Optional[np.ndarray], optional): Previous control solution. Defaults to zeros.
-        x_l (Optional[np.ndarray], optional): Lower bound state constraint. Defaults to no constraints.
-        x_u (Optional[np.ndarray], optional): Upper bound state constraint. Defaults to no constraints.
-        u_l (Optional[np.ndarray], optional): Lower bound control constraint.. Defaults to no constraints.
-        u_u (Optional[np.ndarray], optional): Upper bound control constraint.. Defaults to no constraints.
+        x_l (Optional[np.ndarray], optional): Lower bound state constraint. Defaults to no cstrs.
+        x_u (Optional[np.ndarray], optional): Upper bound state constraint. Defaults to no cstrs.
+        u_l (Optional[np.ndarray], optional): Lower bound control constraint.. Defaults to no cstrs.
+        u_u (Optional[np.ndarray], optional): Upper bound control constraint.. Defaults to no cstrs.
         verbose (bool, optional): Whether to print output. Defaults to False.
         max_it (int, optional): Max number of SCP iterations. Defaults to 100.
         time_limit (float, optional): Time limit in seconds. Defaults to 1000.0.
@@ -296,10 +301,13 @@ def scp_solve(
         reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
         u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
-        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. Defaults to None.
+        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. 
+                                                Defaults to None.
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
-        return_min_viol (bool, optional): Whether to return minimum violation solution as well. Defaults to False.
-        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. Defaults to -1, which means immediately.
+        return_min_viol (bool, optional): Whether to return minimum violation solution as well. 
+                                          Defaults to False.
+        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. 
+                                      Defaults to -1, which means immediately.
     Returns:
         Tuple[np.ndarray, ]: _description_
     """

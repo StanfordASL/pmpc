@@ -11,7 +11,10 @@ from .utils import TablePrinter
 
 jl = None
 JULIA_SOLVE_FNS = dict()  # attribute look up is expensive (~ 2 ms every time)
-print_fn = lambda *args, **kwargs: print(*args, **kwargs)
+
+
+def print_fn(*args, **kwargs):
+    return print(*args, **kwargs)
 
 
 def ensure_julia():
@@ -80,10 +83,7 @@ def lqp_generate_problem_matrices(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_
     x0, f, X_prev, U_prev, X_ref, U_ref = [
         ju.py2jl(to_numpy_f64(z), 1) for z in [x0, f, X_prev, U_prev, X_ref, U_ref]
     ]
-    fx, fu, Q, R = [
-        ju.py2jl(to_numpy_f64(z), 2) for z in [fx, fu, Q, R]
-    ]
-    args = x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref
+    fx, fu, Q, R = [ju.py2jl(to_numpy_f64(z), 2) for z in [fx, fu, Q, R]]
     return jl.lqp_generate_problem_matrices(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref)
 
 
@@ -170,14 +170,20 @@ def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
 
 
 # SCP MPC ##########################################################################################
-norm = lambda x, p=None, dim=None: np.linalg.norm(x, p, dim)
-bmv = lambda A, x: (A @ x[..., None])[..., 0]
+def norm(x, p=None, dim=None):
+    return np.linalg.norm(x, p, dim)
 
-XU2vec = lambda X, U: np.concatenate([X.reshape(-1), U.reshape(-1)])
-vec2XU = lambda z, Xshape, Ushape: (
-    z[: np.prod(Xshape)].reshape(Xshape),
-    z[np.prod(Xshape) :].reshape(Ushape),
-)
+
+def bmv(A, x):
+    return (A @ x[..., None])[..., 0]
+
+
+def XU2vec(X, U):
+    return np.concatenate([X.reshape(-1), U.reshape(-1)])
+
+
+def vec2XU(z, Xshape, Ushape):
+    return z[: np.prod(Xshape)].reshape(Xshape), z[np.prod(Xshape) :].reshape(Ushape)
 
 
 def scp_solve(
@@ -212,7 +218,8 @@ def scp_solve(
     return_min_viol: bool = False,
     min_viol_it0: int = -1,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
-    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with optional non-linear cost term.
+    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with 
+    optional non-linear cost term.
 
     Args:
         f_fx_fu_fn (Callable): Dynamics with linearization callable.
@@ -223,10 +230,10 @@ def scp_solve(
         U_ref (Optional[np.ndarray], optional): Reference control trajectory. Defaults to zeros.
         X_prev (Optional[np.ndarray], optional): Previous state solution. Defaults to x0.
         U_prev (Optional[np.ndarray], optional): Previous control solution. Defaults to zeros.
-        x_l (Optional[np.ndarray], optional): Lower bound state constraint. Defaults to no constraints.
-        x_u (Optional[np.ndarray], optional): Upper bound state constraint. Defaults to no constraints.
-        u_l (Optional[np.ndarray], optional): Lower bound control constraint.. Defaults to no constraints.
-        u_u (Optional[np.ndarray], optional): Upper bound control constraint.. Defaults to no constraints.
+        x_l (Optional[np.ndarray], optional): Lower bound state constraint. Defaults no cstrs.
+        x_u (Optional[np.ndarray], optional): Upper bound state constraint. Defaults to no cstrs.
+        u_l (Optional[np.ndarray], optional): Lower bound control constraint. Defaults to no cstrs.
+        u_u (Optional[np.ndarray], optional): Upper bound control constraint. Defaults to no cstrs.
         verbose (bool, optional): Whether to print output. Defaults to False.
         debug (bool, optional): Whether to store debugging information. Defaults to False.
         max_it (int, optional): Max number of SCP iterations. Defaults to 100.
@@ -236,14 +243,17 @@ def scp_solve(
         reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
         u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
-        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. Defaults to None.
+        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. 
+                                                Defaults to None.
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
         solver_state (Optional[Dict[str, Any]], optional): Solver state. Defaults to None.
-        filter_method (str, optional): Filter method to choose. Defaults to "" which means no filter.
+        filter_method (str, optional): Filter method to choose. Defaults to "" == no filter.
         filter_window (int, optional): Filter window to pick. Defaults to 5.
         filter_it0 (int, optional): First iteration to start filtering on. Defaults to 20.
-        return_min_viol (bool, optional): Whether to return minimum violation solution as well. Defaults to False.
-        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. Defaults to -1, which means immediately.
+        return_min_viol (bool, optional): Whether to return minimum violation solution as well. 
+                                          Defaults to False.
+        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. 
+                                      Defaults to -1, which means immediately.
     Returns:
         Tuple[np.ndarray, ]: _description_
     """
