@@ -370,8 +370,8 @@ end
 function lqp_generate_problem_matrices(probs::AA{OCProb{T}, 1}; settings...)::Tuple where {T}
   settings = Dict{Symbol, Any}(Symbol(p.first) => p.second for p in settings)
   # read in the consensus horizon
-  Nc = get(settings, :Nc, N)
-  Nc = Nc >= 0 ? Nc : N
+  Nc = get(settings, :Nc, -1)
+  Nc = Nc >= 0 ? Nc : probs[1].N
 
   # scale the problem objectives
   weights = get(settings, :weights, nothing)

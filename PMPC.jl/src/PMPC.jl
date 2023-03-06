@@ -10,7 +10,7 @@ export solve!, solve
 export prox_setup!, prox_reset!, prox!
 export split_fbvars
 
-export lqp_solve, lcone_solve
+export lqp_solve, lcone_solve, lqp_generate_problem_matrices
 export rollout, dynamics_violation, make_prob, make_probs
 export PMPCs_ctrl, MPCs_ctrl
 

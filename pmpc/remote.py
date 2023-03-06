@@ -15,10 +15,11 @@ except ModuleNotFoundError:
     redis = None
 
 from . import SOLVE_KWS
-from .scp_mpc import solve as solve_
-from .scp_mpc import tune_scp as tune_scp_
+from .scp_mpc import solve as solve_, tune_scp as tune_scp_, lqp_generate_problem_matrices
 
-SUPPORTED_METHODS = dict(solve=solve_, tune_scp=tune_scp_)
+SUPPORTED_METHODS = dict(
+    solve=solve_, tune_scp=tune_scp_, lqp_generate_problem_matrices=lqp_generate_problem_matrices
+)
 DEFAULT_PORT = 65535 - 7117
 DEFAULT_HOSTNAME = "localhost"
 COMPRESSION_MODULE = zstandard
@@ -31,6 +32,7 @@ if os.getenv("REDIS_PORT", None) is not None:
     REDIS_CONFIG["port"] = int(os.getenv("REDIS_PORT"))
 if os.getenv("REDIS_PASSWORD", None) is not None:
     REDIS_CONFIG["password"] = os.getenv("REDIS_PASSWORD")
+
 
 ## calling utilities ###############################################################################
 def call(
@@ -104,11 +106,12 @@ def simple_call():
     f_fx_fu_fn = lambda x, u: (np.zeros((1, 2)), np.eye(2)[None, ...], np.ones((2, 1))[None, ...])
     args = (f_fx_fu_fn, Q, R, x0)
     solve_(*args, max_it=1, verbose=True)
-    #blocking = True
-    #call("solve", gethostbyname(hostname), port, blocking, *args, max_it=1, verbose=True)
+    # blocking = True
+    # call("solve", gethostbyname(hostname), port, blocking, *args, max_it=1, verbose=True)
 
 
 ####################################################################################################
+
 
 def get_redis_connection(redis_config: Optional[Dict[str, Any]] = None) -> Optional["redis.Redis"]:
     if redis is None:
@@ -143,7 +146,9 @@ def unset_redis_status(rconn: Optional["redis.Redis"], port: int) -> None:
         except redis.ConnectionError:
             pass
 
+
 ## server routine ##################################################################################
+
 
 def _server(
     exit_flag, status_flag, port=DEFAULT_PORT, redis_config: Optional[Dict[str, Any]] = None
@@ -279,7 +284,7 @@ def solve_problem(
     # problem = dict(problem, return_min_viol=False, min_viol_it0=50)
     problem.setdefault("verbose", True)
     if "extra_cstrs_fn_np" in problem:
-        problem["extra_cstr_fn"] = problem["extra_cstr_fn_np"]
+        problem["extra_cstrs_fn"] = problem["extra_cstrs_fn_np"]
     return solve_fn(lambda X, U: f_fx_fu_fn(X, U, P), *args, **problem)
 
 
@@ -359,7 +364,7 @@ def solve_problems(
         workers_items = list(workers.items())
         if randomize_assignment:  # randomize worker order
             random.shuffle(workers_items)
-        for (worker_addr, v) in workers_items:  # for each worker collect result or assign new job
+        for worker_addr, v in workers_items:  # for each worker collect result or assign new job
             if v is not None:
                 idx, results_fn, solve_start_time = v
                 ret = results_fn()
@@ -431,7 +436,7 @@ if __name__ == "__main__":
     try:
         while True:
             server_items = list(SERVERS.items())
-            for (port, server) in server_items:
+            for port, server in server_items:
                 if not server.is_alive():
                     print(f"Killing server on port {port}")
                     server.kill()
@@ -446,6 +451,6 @@ if __name__ == "__main__":
                     del SERVERS[port]
             time.sleep(1.0)
     except KeyboardInterrupt:
-        for (port, server) in SERVERS.items():
+        for port, server in SERVERS.items():
             print(f"Stopping server on port {port}")
             server.stop()

@@ -24,8 +24,7 @@ def ensure_julia():
         JULIA_SOLVE_FNS["cone"] = jl.lcone_solve
 
 
-##$#############################################################################
-##^# fixed-point convergence methods ###########################################
+# fixed-point convergence methods ##################################################################
 def AA_method(Fs: List[np.ndarray]) -> np.ndarray:
     F = np.stack([f.reshape(-1) for f in Fs], -1)
     Ft = F[:, :-1] - F[:, -1:]
@@ -52,8 +51,9 @@ def select_method(Fs: List[np.ndarray]) -> np.ndarray:
 
 
 FILTER_MAP = dict(smooth=smooth_method, select=select_method, AA=AA_method)
-##$#############################################################################
-##^# affine solve using julia ##################################################
+
+
+# affine solve using julia #########################################################################
 def atleast_nd(x: Optional[np.ndarray], n: int):
     if x is None:
         return None
@@ -70,6 +70,21 @@ def to_numpy_f64(x):
         return x
     else:
         return np.array(x, dtype=np.float64)
+
+
+def lqp_generate_problem_matrices(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref):
+    ensure_julia()
+    x0 = atleast_nd(x0, 2)
+    f, X_prev, U_prev, X_ref, U_ref = [atleast_nd(z, 3) for z in [f, X_prev, U_prev, X_ref, U_ref]]
+    fx, fu, Q, R = [atleast_nd(z, 4) for z in [fx, fu, Q, R]]
+    x0, f, X_prev, U_prev, X_ref, U_ref = [
+        ju.py2jl(to_numpy_f64(z), 1) for z in [x0, f, X_prev, U_prev, X_ref, U_ref]
+    ]
+    fx, fu, Q, R = [
+        ju.py2jl(to_numpy_f64(z), 2) for z in [fx, fu, Q, R]
+    ]
+    args = x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref
+    return jl.lqp_generate_problem_matrices(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref)
 
 
 def aff_solve(
@@ -136,8 +151,7 @@ def aff_solve(
     return X_traj, U_traj, ret[2]
 
 
-##$#############################################################################
-##^# cost augmentation #########################################################
+# cost augmentation ################################################################################
 def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
     """Modify the linear reference trajectory to account for the linearized non-linear cost term."""
     if cost_fn is not None:
@@ -155,8 +169,7 @@ def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
     return X_ref, U_ref
 
 
-##$#############################################################################
-##^# SCP MPC ###################################################################
+# SCP MPC ##########################################################################################
 norm = lambda x, p=None, dim=None: np.linalg.norm(x, p, dim)
 bmv = lambda A, x: (A @ x[..., None])[..., 0]
 
@@ -380,6 +393,7 @@ def scp_solve(
 
 solve = scp_solve  # set an alias
 ####################################################################################################
+
 
 # tuning hyperparameters ###########################################################################
 def tune_scp(
