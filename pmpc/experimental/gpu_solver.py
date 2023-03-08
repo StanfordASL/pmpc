@@ -1,26 +1,48 @@
 import time
-from typing import Optional, List, Tuple, Dict, Callable, Any
+from typing import Optional, List, Tuple, Dict, Callable, Any, NamedTuple
 from copy import copy
-from functools import partial
-from enum import Enum
+from jfi import jaxm
+import numpy as np
+from pmpc.utils import TablePrinter  # noqa: E402
+from .solver_definitions import Solver, get_pinit_state, get_prun_with_state
 
-# import jax
-from jfi import init
-
-jaxm = init()
-
-from pmpc.utils import TablePrinter # noqa: E402
-from .convex_solver import ConvexSolver # noqa: E402
-import jaxopt # noqa: E402
-
+tree_util = jaxm.jax.tree_util
 Array = jaxm.jax.Array
+
+SOLVE_KWS = {
+    "X_ref",
+    "U_ref",
+    "X_prev",
+    "U_prev",
+    "x_l",
+    "x_u",
+    "u_l",
+    "u_u",
+    "verbose",
+    "debug",
+    "max_it",
+    "time_limit",
+    "res_tol",
+    "reg_x",
+    "reg_u",
+    "slew_rate",
+    "u_slew",
+    "cost_fn",
+    "extra_cvx_cost_fn",
+    "solver_settings",
+    "solver_state",
+}
 
 
 ####################################################################################################
 
 print_fn = print
+
+
 def bmv(A, x):
     return (A @ x[..., None])[..., 0]
+
+
 def vec(x, n=2):
     return x.reshape(x.shape[:-n] + (-1,))
 
@@ -33,8 +55,10 @@ def atleast_nd(x: Optional[Array], n: int):
 
 
 ####################################################################################################
+
+
 @jaxm.jit
-def obj_fn(U: Array, args: Dict[str, List[Array]]) -> Array:
+def default_obj_fn(U: Array, args: Dict[str, List[Array]]) -> Array:
     NUMINF = 1e20
     Ft, ft, X_prev, U_prev = args["dyn"]
     Q, R, X_ref, U_ref = args["cost"]
@@ -67,63 +91,6 @@ def obj_fn(U: Array, args: Dict[str, List[Array]]) -> Array:
     J = J + jaxm.where(jaxm.isfinite(J_slew), J_slew, 0.0)
 
     return jaxm.where(jaxm.isfinite(J), J, jaxm.inf)
-
-
-class Solver(Enum):
-    BFGS = 0
-    LBFGS = 1
-    CVX = 2
-
-
-
-opts = dict(
-    maxiter=300,
-    verbose=False,
-    jit=True,
-    linesearch="backtracking",
-)
-SOLVERS = {
-    Solver.BFGS: jaxopt.BFGS(obj_fn, **opts),
-    Solver.LBFGS: jaxopt.LBFGS(obj_fn, **opts),
-    #Solver.CVX: ConvexSolver(obj_fn, **opts),
-    Solver.CVX: ConvexSolver(obj_fn, **dict(opts, maxls=20, linesearch="binary_search")),
-}
-
-RUN_METHODS = {k: jaxm.jit(solver.run) for k, solver in SOLVERS.items()}
-UPDATE_METHODS = {k: jaxm.jit(solver.update) for k, solver in SOLVERS.items()}
-
-
-@partial(jaxm.jit, static_argnums=(0,))
-def run_with_state(solver: int, z: Array, args: Dict[str, List[Array]], state, max_it: int = 100):
-    def body_fn(i, z_state):
-        return UPDATE_METHODS[solver](*z_state, args)
-    z_state = body_fn(0, (z, state))
-    return jaxm.jax.lax.fori_loop(1, max_it, body_fn, z_state)
-
-
-@partial(jaxm.jit, static_argnums=(0,))
-def init_state(solver: int, U_prev: Array, args: Dict[str, List[Array]]):
-    return SOLVERS[solver].init_state(U_prev, args)
-
-
-@partial(jaxm.jit, static_argnums=(0,))
-def prun_with_state(solver: int, z: Array, args: Dict[str, List[Array]], state, max_it: int = 100):
-    in_axes = jaxm.jax.tree_util.tree_map(
-        lambda x: 0 if (hasattr(x, "shape") and x.ndim > 0 and x.shape[0] == z.shape[0]) else None,
-        (solver, z, args, state),
-    )
-    return jaxm.jax.vmap(run_with_state, in_axes=in_axes)(solver, z, args, state)
-
-
-@partial(jaxm.jit, static_argnums=(0,))
-def pinit_state(solver: int, U_prev: Array, args: Dict[str, List[Array]]):
-    in_axes = jaxm.jax.tree_util.tree_map(
-        lambda x: 0
-        if (hasattr(x, "shape") and x.ndim > 0 and x.shape[0] == U_prev.shape[0])
-        else None,
-        (U_prev, args),
-    )
-    return jaxm.jax.vmap(SOLVERS[solver].init_state, in_axes=in_axes)(U_prev, args)
 
 
 ####################################################################################################
@@ -171,37 +138,26 @@ def U2X(U, U_prev, Ft, ft):
 
 ####################################################################################################
 def aff_solve(
-    f: Array,
-    fx: Array,
-    fu: Array,
-    x0: Array,
-    X_prev: Array,
-    U_prev: Array,
-    Q: Array,
-    R: Array,
-    X_ref: Array,
-    U_ref: Array,
+    problem: Dict[str, Array],
     reg_x: Array,
     reg_u: Array,
-    slew_rate: float,
-    u_slew: Array,
-    x_l: Array,
-    x_u: Array,
-    u_l: Array,
-    u_u: Array,
     solver_settings: Optional[Dict[str, Any]] = None,
+    extra_cvx_cost_fn: Optional[Callable] = None,
+    problems: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Array, Array, Any]:
     """Solve a single instance of a linearized MPC problem."""
     solver_settings = copy(solver_settings) if solver_settings is not None else dict()
     alpha = solver_settings["smooth_alpha"]
+    x0, f, fx, fu = problem["x0"], problem["f"], problem["fx"], problem["fu"]
+    X_prev, U_prev = problem["X_prev"], problem["U_prev"]
 
     Ft, ft = Ft_ft_fn(x0, U_prev, f, fx, fu, X_prev, U_prev)
     args = dict()
-    args["dyn"] = Ft, ft, X_prev, U_prev
-    args["cost"] = Q, R, X_ref, U_ref
+    args["dyn"] = Ft, ft, problem["X_prev"], problem["U_prev"]
+    args["cost"] = problem["Q"], problem["R"], problem["X_ref"], problem["U_ref"]
     args["reg"] = reg_x, reg_u
-    args["slew"] = slew_rate, u_slew
-    args["cstr"] = x_l, x_u, u_l, u_u, alpha
+    args["slew"] = problem["slew_rate"], problem["u_slew"]
+    args["cstr"] = problem["x_l"], problem["x_u"], problem["u_l"], problem["u_u"], alpha
 
     default_solver = "CVX"
     if solver_settings.get("solver", default_solver).lower() == "BFGS".lower():
@@ -209,13 +165,25 @@ def aff_solve(
     elif solver_settings.get("solver", default_solver).lower() == "LBFGS".lower():
         solver, max_it = Solver.LBFGS, 100
     elif solver_settings.get("solver", default_solver).lower() == "CVX".lower():
-        solver, max_it = Solver.CVX, 30
+        solver, max_it = Solver.CVX, 50
     else:
         msg = f"Solver {solver_settings.get('solver')} not supported."
         raise ValueError(msg)
+
+    if extra_cvx_cost_fn is None:
+        obj_fn = default_obj_fn
+    else:
+
+        def obj_fn(U, args):
+            return default_obj_fn(U, args) + extra_cvx_cost_fn(U, args, problems=problems)
+
+    pinit_state = get_pinit_state(obj_fn)
+    prun_with_state = get_prun_with_state(obj_fn)
     state = solver_settings.get("solver_state", None)
     if state is None or solver_settings.get("solver", default_solver).lower() in ["CVX".lower()]:
         state = pinit_state(solver, U_prev, args)
+
+    # solve
     U, state = prun_with_state(solver, U_prev, args, state, max_it=max_it)
 
     mask = jaxm.tile(
@@ -231,19 +199,79 @@ def aff_solve(
 _get_new_ref = jaxm.jit(lambda ref, A, c: ref - jaxm.linalg.solve(A, c[..., None])[..., 0])
 
 
-def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
+def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref, problems=None):
     """Modify the linear reference trajectory to account for the linearized non-linear cost term."""
+    topts = dict(dtype=X_prev.dtype, device=X_prev.device())
     if cost_fn is not None:
-        cx, cu = cost_fn(X_prev, U_prev)
+        cx, cu = cost_fn(X_prev, U_prev, problems=problems)
 
         # augment the state cost #############
         if cx is not None:
-            X_ref = _get_new_ref(X_ref, Q, jaxm.array(cx))
+            X_ref = _get_new_ref(X_ref, Q, jaxm.to(jaxm.array(cx), **topts))
 
         # augment the control cost ###########
         if cu is not None:
-            U_ref = _get_new_ref(U_ref, R, jaxm.array(cu))
+            U_ref = _get_new_ref(U_ref, R, jaxm.to(jaxm.array(cu), **topts))
     return X_ref, U_ref
+
+
+####################################################################################################
+
+
+def _is_numeric(x):
+    try:
+        jaxm.array(x)
+        return True
+    except TypeError:
+        return False
+
+
+def stack_problems(problems: List[Dict[str, Any]]) -> Dict[str, Any]:
+    assert len(problems) > 0
+    problems = list(problems)
+    prob_structure = tree_util.tree_structure(problems[0])
+    problems = [tree_util.tree_flatten(problem)[0] for problem in problems]
+    numeric_mask = [_is_numeric(val) for val in problems[0]]
+    prob_vals = [
+        np.stack([np.array(problem[i]) for problem in problems], 0)
+        if is_numeric
+        else problems[0][i]
+        for (i, is_numeric) in enumerate(numeric_mask)
+    ]
+    problems = tree_util.tree_unflatten(prob_structure, prob_vals)
+    return problems
+
+
+def sanitize_problem(problems: Dict[str, Any]) -> Dict[str, Any]:
+    return tree_util.tree_map(lambda x: x if _is_numeric(x) else None, problems)
+
+
+def solve_problems(problems: List[Dict[str, Any]]):
+    t = time.time()
+    problems = stack_problems(problems)
+    print(f"Stacking problems took {time.time() - t:.4e} s")
+    f_fx_fu_fn = problems["f_fx_fu_fn"]
+    Q, R, x0 = problems["Q"], problems["R"], problems["x0"]
+    scp_solve_kws = {k: problems[k] for k in SOLVE_KWS if k in problems}
+    for k in ["verbose", "max_it", "res_tol", "time_limit"]:
+        if k in scp_solve_kws:
+            scp_solve_kws[k] = float(scp_solve_kws[k][0])
+    problems = sanitize_problem(problems)
+    X, U, data = scp_solve(f_fx_fu_fn, Q, R, x0, **scp_solve_kws, problems=problems)
+    data_struct = tree_util.tree_structure(data)
+    data = tree_util.tree_flatten(data)[0]
+    data_list = [
+        tree_util.tree_unflatten(
+            data_struct,
+            [
+                x[i] if hasattr(x, "shape") and x.ndim > 0 and x.shape[0] == X.shape[0] else x
+                for x in data
+            ],
+        )
+        for i in range(X.shape[0])
+    ]
+    sols = [(X[i, ...], U[i, ...], data_list[i]) for i in range(X.shape[0])]
+    return sols
 
 
 # SCP MPC ##########################################################################################
@@ -271,28 +299,31 @@ def scp_solve(
     slew_rate: Optional[float] = None,
     u_slew: Optional[Array] = None,
     cost_fn: Optional[Callable] = None,
-    extra_cstrs_fns: Optional[Callable] = None,
+    extra_cvx_cost_fn: Optional[Callable] = None,
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Any] = None,
     return_min_viol: bool = False,
     min_viol_it0: int = -1,
+    dtype: Any = jaxm.float32,
+    device: Any = "cuda",
+    problems: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Array, Array, Dict[str, Any]]:
-    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with 
+    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with
     optional non-linear cost term.
 
     Args:
         f_fx_fu_fn (Callable): Dynamics with linearization callable.
-        Q (np.ndarray): The quadratic state cost.
-        R (np.ndarray): The quadratic control cost.
-        x0 (np.ndarray): Initial state.
-        X_ref (Optional[np.ndarray], optional): Reference state trajectory. Defaults to zeros.
-        U_ref (Optional[np.ndarray], optional): Reference control trajectory. Defaults to zeros.
-        X_prev (Optional[np.ndarray], optional): Previous state solution. Defaults to x0.
-        U_prev (Optional[np.ndarray], optional): Previous control solution. Defaults to zeros.
-        x_l (Optional[np.ndarray], optional): Lower bound state constraint. Defaults to no cstrs.
-        x_u (Optional[np.ndarray], optional): Upper bound state constraint. Defaults to no cstrs.
-        u_l (Optional[np.ndarray], optional): Lower bound control constraint.. Defaults to no cstrs.
-        u_u (Optional[np.ndarray], optional): Upper bound control constraint.. Defaults to no cstrs.
+        Q (Array): The quadratic state cost.
+        R (Array): The quadratic control cost.
+        x0 (Array): Initial state.
+        X_ref (Optional[Array], optional): Reference state trajectory. Defaults to zeros.
+        U_ref (Optional[Array], optional): Reference control trajectory. Defaults to zeros.
+        X_prev (Optional[Array], optional): Previous state solution. Defaults to x0.
+        U_prev (Optional[Array], optional): Previous control solution. Defaults to zeros.
+        x_l (Optional[Array], optional): Lower bound state constraint. Defaults to no cstrs.
+        x_u (Optional[Array], optional): Upper bound state constraint. Defaults to no cstrs.
+        u_l (Optional[Array], optional): Lower bound control constraint.. Defaults to no cstrs.
+        u_u (Optional[Array], optional): Upper bound control constraint.. Defaults to no cstrs.
         verbose (bool, optional): Whether to print output. Defaults to False.
         max_it (int, optional): Max number of SCP iterations. Defaults to 100.
         time_limit (float, optional): Time limit in seconds. Defaults to 1000.0.
@@ -300,22 +331,26 @@ def scp_solve(
         reg_x (float, optional): State improvement regularization. Defaults to 1e0.
         reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
-        u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
-        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. 
+        u_slew (Optional[Array], optional): Slew control to regularize to. Defaults to None.
+        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function.
                                                 Defaults to None.
+        extra_cvx_cost_fn (Optional[Callable], optional): Extra convex cost function.
+                                                          Defaults to None.
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
-        return_min_viol (bool, optional): Whether to return minimum violation solution as well. 
+        return_min_viol (bool, optional): Whether to return minimum violation solution as well.
                                           Defaults to False.
-        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. 
+        min_viol_it0 (int, optional): First iteration to store minimum violation solutions.
                                       Defaults to -1, which means immediately.
     Returns:
-        Tuple[np.ndarray, ]: _description_
+        Tuple[Array, Array, Dict[str, Any]]: X, U, data
     """
     t_elaps = time.time()
+    topts = dict(device=device, dtype=dtype)
 
     # create variables and reference trajectories ##############################
-    x0, reg_x, reg_u = jaxm.array(x0), jaxm.array(reg_x), jaxm.array(reg_u)
-    Q, R = jaxm.copy(Q), jaxm.copy(R)
+    x0 = jaxm.to(jaxm.array(x0), **topts)
+    reg_x, reg_u = jaxm.to(jaxm.array(reg_x), **topts), jaxm.to(jaxm.array(reg_u), **topts)
+    Q, R = jaxm.to(jaxm.copy(Q), **topts), jaxm.to(jaxm.copy(R), **topts)
     if x0.ndim == 1:  # single particle case
         assert x0.ndim == 1 and R.ndim == 3 and Q.ndim == 3
         args = Q, R, x0, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u
@@ -328,18 +363,40 @@ def scp_solve(
         single_particle_problem_flag = False
     M, N, xdim, udim = Q.shape[:3] + R.shape[-1:]
 
-    X_ref = jaxm.zeros((M, N, xdim)) if X_ref is None else jaxm.array(X_ref)
-    U_ref = jaxm.zeros((M, N, udim)) if U_ref is None else jaxm.array(U_ref)
-    X_prev = jaxm.array(X_prev) if X_prev is not None else X_ref
-    U_prev = jaxm.array(U_prev) if U_prev is not None else U_ref
+    X_ref = (
+        jaxm.zeros((M, N, xdim), **topts) if X_ref is None else jaxm.to(jaxm.array(X_ref), **topts)
+    )
+    U_ref = (
+        jaxm.zeros((M, N, udim), **topts) if U_ref is None else jaxm.to(jaxm.array(U_ref), **topts)
+    )
+    X_prev = jaxm.to(jaxm.array(X_prev), **topts) if X_prev is not None else X_ref
+    U_prev = jaxm.to(jaxm.array(U_prev), **topts) if U_prev is not None else U_ref
     X_prev, U_prev = X_prev.reshape((M, N, xdim)), U_prev.reshape((M, N, udim))
     X_ref, U_ref = X_ref.reshape((M, N, xdim)), U_ref.reshape((M, N, udim))
-    x_l = jaxm.array(x_l) if x_l is not None else jaxm.nan * jaxm.ones(X_prev.shape)
-    x_u = jaxm.array(x_u) if x_u is not None else jaxm.nan * jaxm.ones(X_prev.shape)
-    u_l = jaxm.array(u_l) if u_l is not None else jaxm.nan * jaxm.ones(U_prev.shape)
-    u_u = jaxm.array(u_u) if u_u is not None else jaxm.nan * jaxm.ones(U_prev.shape)
+    x_l = (
+        jaxm.to(jaxm.array(x_l), **topts)
+        if x_l is not None
+        else jaxm.nan * jaxm.ones(X_prev.shape, **topts)
+    )
+    x_u = (
+        jaxm.to(jaxm.array(x_u), **topts)
+        if x_u is not None
+        else jaxm.nan * jaxm.ones(X_prev.shape, **topts)
+    )
+    u_l = (
+        jaxm.to(jaxm.array(u_l), **topts)
+        if u_l is not None
+        else jaxm.nan * jaxm.ones(U_prev.shape, **topts)
+    )
+    u_u = (
+        jaxm.to(jaxm.array(u_u), **topts)
+        if u_u is not None
+        else jaxm.nan * jaxm.ones(U_prev.shape, **topts)
+    )
     u_slew = (
-        u_slew if u_slew is not None else jaxm.nan * jaxm.ones(x0.shape[:-1] + (U_prev.shape[-1],))
+        jaxm.to(jaxm.array(u_slew), **topts)
+        if u_slew is not None
+        else jaxm.nan * jaxm.ones(x0.shape[:-1] + (U_prev.shape[-1],), **topts)
     )
     slew_rate = slew_rate if slew_rate is not None else 0.0
     data = dict(solver_data=[], hist=[], sol_hist=[])
@@ -359,9 +416,9 @@ def scp_solve(
     while it < max_it:
         X_ = jaxm.cat([x0[..., None, :], X_prev[..., :-1, :]], -2)
         f, fx, fu = f_fx_fu_fn(X_, U_prev)
-        f = jaxm.array(f).reshape((M, N, xdim))
-        fx = jaxm.array(fx).reshape((M, N, xdim, xdim))
-        fu = jaxm.array(fu).reshape((M, N, xdim, udim))
+        f = jaxm.to(jaxm.array(f), **topts).reshape((M, N, xdim))
+        fx = jaxm.to(jaxm.array(fx), **topts).reshape((M, N, xdim, xdim))
+        fu = jaxm.to(jaxm.array(fu), **topts).reshape((M, N, xdim, udim))
 
         # augment the cost or add extra constraints ################################################
         X_ref_, U_ref_ = _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
@@ -374,22 +431,22 @@ def scp_solve(
         #            for extra_cstr in solver_settings["extra_cstrs"]
         #        ]
         #    )
-        args_dyn = (f, fx, fu, x0, X_prev, U_prev)
-        args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
-        args_cstr = (x_l, x_u, u_l, u_u)
+        problem = dict(f=f, fx=fx, fu=fu, x0=x0, X_prev=X_prev, U_prev=U_prev)
+        problem = dict(problem, Q=Q, R=R, X_ref=X_ref_, U_ref=U_ref_)
+        problem = dict(problem, slew_rate=slew_rate, u_slew=u_slew)
+        problem = dict(problem, x_l=x_l, x_u=x_u, u_l=u_l, u_u=u_u)
         solver_settings = solver_settings if solver_settings is not None else dict()
         solver_settings["solver_state"] = solver_state
         kw = dict(solver_settings=solver_settings)
         smooth_alpha = kw["solver_settings"].get("smooth_alpha", 1e4)
         new_smooth_alpha = jaxm.minimum(10 ** (-1 + min(it, 10)), smooth_alpha)
-        #if new_smooth_alpha != smooth_alpha:
-        #    print("Deleting")
-        #    del kw["solver_settings"]["solver_state"]
         smooth_alpha = new_smooth_alpha
         kw["solver_settings"] = dict(kw["solver_settings"], smooth_alpha=smooth_alpha)
 
         t_aff_solve = time.time()
-        X, U, solver_data = aff_solve(*args_dyn, *args_cost, *args_cstr, **kw)
+        X, U, solver_data = aff_solve(
+            problem, reg_x, reg_u, **kw, extra_cvx_cost_fn=extra_cvx_cost_fn, problems=problems
+        )
         t_aff_solve = time.time() - t_aff_solve
 
         solver_state = solver_data.get("solver_state", None)
@@ -406,11 +463,11 @@ def scp_solve(
         dX, dU = X_ - X_prev, U - U_prev
         max_res = max(jaxm.max(jaxm.linalg.norm(dX, 2, -1)), jaxm.max(jaxm.linalg.norm(dU, 2, -1)))
         dX, dU = X_ - X_ref, U - U_ref
-        obj = jaxm.mean(solver_data.get("obj", 0.0))
+        obj = np.mean(solver_data.get("obj", 0.0))
         X_prev, U_prev = X[..., 1:, :], U
 
         t_run = time.time() - t_elaps
-        vals = (it + 1, t_run, obj, max_res, reg_x, reg_u, smooth_alpha)
+        vals = (it + 1, t_run, obj, max_res, np.mean(reg_x), np.mean(reg_u), np.mean(smooth_alpha))
         if verbose:
             print_fn(tp.make_values(vals))
         data["solver_data"].append(solver_data)
