@@ -1,1 +1,1 @@
-from .gpu_solver import * # noqa: F403
+from .jax_solver import * # noqa: F403

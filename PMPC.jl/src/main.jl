@@ -137,6 +137,7 @@ function lqp_solve(
   A, b = lqp_repr_Ab(probs, Nc)
   G, l, u = lqp_repr_Gla(probs, Nc)
   # set default solver
+  haskey(settings, :smooth_alpha) && !get(settings, :smooth_cstr, "logbarrier")
   if !haskey(settings, :solver)
     settings[:solver] = length(get(settings, :smooth_cstr, "")) > 0 ? "ecos" : "osqp"
   end
