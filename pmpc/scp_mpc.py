@@ -208,7 +208,8 @@ def scp_solve(
     reg_u: float = 1e-2,
     slew_rate: float = 0.0,
     u_slew: Optional[np.ndarray] = None,
-    cost_fn: Optional[Callable] = None,
+    lin_cost_fn: Optional[Callable] = None,
+    cost_fn: Optional[Callable] = None, # deprecated
     extra_cstrs_fns: Optional[Callable] = None,
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
@@ -257,6 +258,9 @@ def scp_solve(
     Returns:
         Tuple[np.ndarray, ]: _description_
     """
+    if cost_fn is not None:
+        raise ValueError("cost_fn is deprecated, use lin_cost_fn instead.")
+
     t_elaps = time.time()
 
     # create variables and reference trajectories ##############################

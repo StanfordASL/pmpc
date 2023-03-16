@@ -5,7 +5,8 @@ from jfi import jaxm
 import jfi
 import numpy as np
 from pmpc.utils import TablePrinter  # noqa: E402
-from .solver_definitions import Solver, get_pinit_state, get_prun_with_state, default_obj_fn
+from .solver_definitions import get_pinit_state, get_prun_with_state, default_obj_fn
+from .solver_definitions import SOLVER_BFGS, SOLVER_LBFGS, SOLVER_CVX, SOLVER_SQP
 from .dynamics_definitions import get_rollout_and_linearization
 
 tree_util = jaxm.jax.tree_util
@@ -110,10 +111,10 @@ def aff_solve(
     # retrive the solver and the correct settings
     solver = solver_settings.get("solver", "SQP").upper()
     solver_map = dict(
-        BFGS=(Solver.BFGS, 100),
-        LBFGS=(Solver.LBFGS, 100),
-        CVX=(Solver.CVX, 30),
-        SQP=(Solver.SQP, 30),
+        BFGS=(SOLVER_BFGS, 100),
+        LBFGS=(SOLVER_LBFGS, 100),
+        CVX=(SOLVER_CVX, 30),
+        SQP=(SOLVER_SQP, 30),
     )
     assert solver in solver_map, f"Solver {solver_settings.get('solver')} not supported."
     solver, max_inner_it = solver_map[solver]
@@ -138,7 +139,7 @@ def aff_solve(
     prun_with_state = get_prun_with_state(obj_fn, solver_settings)
     state = solver_settings.get("solver_state", None)
 
-    if state is None or solver in {Solver.CVX, Solver.SQP}:
+    if state is None or solver in {SOLVER_CVX, SOLVER_SQP}:
         state = pinit_state(solver, U_prev, problems)
 
     # solve
@@ -246,7 +247,7 @@ def solve_problems(
     for k in ["verbose", "max_it", "res_tol", "time_limit"]:
         if k in scp_solve_kws:
             scp_solve_kws[k] = float(scp_solve_kws[k][0])
-    problems = _sanitize_problem(problems)
+    #problems = _sanitize_problem(problems)
     X, U, data = scp_solve(f_fx_fu_fn, Q, R, x0, **scp_solve_kws)
     if split:
         data_struct = tree_util.tree_structure(data)
@@ -287,6 +288,7 @@ def scp_solve(
     u0_slew: Optional[Array] = None,
     lin_cost_fn: Optional[Callable] = None,
     diff_cost_fn: Optional[Callable] = None,
+    cost_fn: Optional[Callable] = None, # deprecated, do not use
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Any] = None,
     return_min_viol: bool = False,
@@ -336,6 +338,9 @@ def scp_solve(
     Returns:
         Tuple[Array, Array, Dict[str, Any]]: X, U, data
     """
+    if cost_fn is not None:
+        raise ValueError("cost_fn is deprecated, use lin_cost_fn instead.")
+
     t_elaps = time.time()
     topts = dict(device=device)
     topts["dtype"] = dtype if dtype is not None else jfi.default_dtype_for_device(device)
@@ -474,6 +479,9 @@ def scp_solve(
         dX, dU = X_ - X_ref, U - U_ref
         obj = np.mean(solver_data.get("obj", 0.0))
         X_prev, U_prev = X[..., 1:, :], U
+        if extra_kw.get("return_solhist", False):
+            data.setdefault("solhist", [])
+            data["solhist"].append((X_prev, U_prev))
 
         t_run = time.time() - t_elaps
         vals = (it + 1, t_run, obj, max_res, np.mean(reg_x), np.mean(reg_u), np.mean(smooth_alpha))

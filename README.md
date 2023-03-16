@@ -190,7 +190,7 @@ solution if the dynamics are not sufficiently smooth.
 
 The solver supports custom arbitrary cost via each-SCP-iteration cost linearization and custom constraints via each-SCP-iteration constraint reformulation into any convex-cone constraint.
 
-- `cost_fn` is an optional callable which allows specifying a custom cost, it
+- `lin_cost_fn` is an optional callable which allows specifying a custom cost, it
 should take arbitrary `X`, `U` and return a tuple
     - `cx`, the linearization of the cost with respect to the state, `np.shape(cx) == (N, xdim) or cx is None`
     - `cu`, the linearization of the cost with respect to the controls, `np.shape(cu) == (N, udim) or cu is None`
@@ -208,7 +208,7 @@ I highly recommend using an auto-diff library to produce the linearizations to a
     - `c_left` - the additive linear cost augmentation for existing variables
     - `c_right` - the linear (minimization) cost for new variables to introduce
 
- *Note: `cost_fn` is expected to return a tuple, but `extra_cstrs_fns` must be a list of functions!*
+ *Note: `lin_cost_fn` is expected to return a tuple, but `extra_cstrs_fns` must be a list of functions!*
 
 ### Variable Layout
 
@@ -294,7 +294,7 @@ TODO more detailed explanation
 N, xdim, udim = 10, 3, 2
 X_ref = np.random.rand(N, xdim)
 
-def cost_fn(X, U):
+def lin_cost_fn(X, U):
     # cost is np.sum((X - X_ref) ** 2)
     cx = 2 * (X - X_ref)
     cu = None
