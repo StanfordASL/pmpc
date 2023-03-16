@@ -152,10 +152,10 @@ def aff_solve(
 
 
 # cost augmentation ################################################################################
-def _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
+def _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
     """Modify the linear reference trajectory to account for the linearized non-linear cost term."""
-    if cost_fn is not None:
-        cx, cu = cost_fn(X_prev, U_prev)
+    if lin_cost_fn is not None:
+        cx, cu = lin_cost_fn(X_prev, U_prev)
 
         # augment the state cost #############
         if cx is not None:
@@ -244,8 +244,8 @@ def scp_solve(
         reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
         u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
-        cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. 
-                                                Defaults to None.
+        lin_cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. 
+                                                    Defaults to None.
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
         solver_state (Optional[Dict[str, Any]], optional): Solver state. Defaults to None.
         filter_method (str, optional): Filter method to choose. Defaults to "" == no filter.
@@ -295,7 +295,7 @@ def scp_solve(
     field_names = ["it", "elaps", "obj", "resid", "reg_x", "reg_u"]
     fmts = ["%04d", "%8.3e", "%8.3e", "%8.3e", "%8.3e", "%8.3e"]
     tp = TablePrinter(field_names, fmts=fmts)
-    solver_settings = solver_settings if solver_settings is not None else dict()
+    solver_settings = copy(solver_settings) if solver_settings is not None else dict()
 
     min_viol = math.inf
 
@@ -312,7 +312,7 @@ def scp_solve(
         fu = fu.reshape((M, N, xdim, udim))
 
         # augment the cost or add extra constraints ################################################
-        X_ref_, U_ref_ = _augment_cost(cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
+        X_ref_, U_ref_ = _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
         if extra_cstrs_fns is not None:
             solver_settings["extra_cstrs"] = tuple(extra_cstrs_fns(X_prev, U_prev))
         if "extra_cstrs" in solver_settings:

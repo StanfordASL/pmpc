@@ -63,10 +63,18 @@ def default_obj_fn(U: Array, problem: Dict[str, List[Array]]) -> Array:
     x_u_ = jaxm.where(jaxm.isfinite(x_u), x_u, NUMINF)
     u_l_ = jaxm.where(jaxm.isfinite(u_l), u_l, -NUMINF)
     u_u_ = jaxm.where(jaxm.isfinite(u_u), u_u, NUMINF)
-    J = J + jaxm.mean(jaxm.where(jaxm.isfinite(x_l), -jaxm.log(-alpha * (-X + x_l_)) / alpha, 0.0))
-    J = J + jaxm.mean(jaxm.where(jaxm.isfinite(x_u), -jaxm.log(-alpha * (X - x_u_)) / alpha, 0.0))
-    J = J + jaxm.mean(jaxm.where(jaxm.isfinite(u_l), -jaxm.log(-alpha * (-U + u_l_)) / alpha, 0.0))
-    J = J + jaxm.mean(jaxm.where(jaxm.isfinite(u_u), -jaxm.log(-alpha * (U - u_u_)) / alpha, 0.0))
+    J = J + jaxm.mean(
+        jaxm.sum(jaxm.where(jaxm.isfinite(x_l), -jaxm.log(-alpha * (-X + x_l_)) / alpha, 0.0), -1)
+    )
+    J = J + jaxm.mean(
+        jaxm.sum(jaxm.where(jaxm.isfinite(x_u), -jaxm.log(-alpha * (X - x_u_)) / alpha, 0.0), -1)
+    )
+    J = J + jaxm.mean(
+        jaxm.sum(jaxm.where(jaxm.isfinite(u_l), -jaxm.log(-alpha * (-U + u_l_)) / alpha, 0.0), -1)
+    )
+    J = J + jaxm.mean(
+        jaxm.sum(jaxm.where(jaxm.isfinite(u_u), -jaxm.log(-alpha * (U - u_u_)) / alpha, 0.0), -1)
+    )
 
     # slew rate
     J_slew = slew_rate * jaxm.mean(jaxm.sum((U[..., :-1, :] - U[..., 1:, :]) ** 2, -1))
