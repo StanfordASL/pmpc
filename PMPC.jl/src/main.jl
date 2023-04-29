@@ -346,7 +346,7 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
     :obj => obj,
     :settings => settings,
     :ts => ts,
-    :residual => 0.5 * dot(z, P, z) + dot(z, q) + resid,
+    #:residual => 0.5 * dot(z, P, z) + dot(z, q) + resid,
   )
   return X, U, data
 end

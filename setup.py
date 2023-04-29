@@ -66,7 +66,7 @@ class PostInstallCommand(install):
 # perform setup ##############################################
 setup(
     name="pmpc",
-    version="0.5",
+    version="0.6.0",
     packages=find_packages(),
     install_requires=["numpy", "julia", "zstandard", "pyzmq", "cloudpickle", "redis"],
     dependency_links=[],

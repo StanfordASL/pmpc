@@ -152,10 +152,10 @@ def aff_solve(
 
 
 # cost augmentation ################################################################################
-def _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref):
+def _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref, problems):
     """Modify the linear reference trajectory to account for the linearized non-linear cost term."""
     if lin_cost_fn is not None:
-        cx, cu = lin_cost_fn(X_prev, U_prev)
+        cx, cu = lin_cost_fn(X_prev, U_prev, problems)
 
         # augment the state cost #############
         if cx is not None:
@@ -207,9 +207,9 @@ def scp_solve(
     reg_x: float = 1e0,
     reg_u: float = 1e-2,
     slew_rate: float = 0.0,
-    u_slew: Optional[np.ndarray] = None,
+    u0_slew: Optional[np.ndarray] = None,
     lin_cost_fn: Optional[Callable] = None,
-    cost_fn: Optional[Callable] = None, # deprecated
+    cost_fn: Optional[Callable] = None,  # deprecated
     extra_cstrs_fns: Optional[Callable] = None,
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Dict[str, Any]] = None,
@@ -218,8 +218,9 @@ def scp_solve(
     filter_it0: int = 20,
     return_min_viol: bool = False,
     min_viol_it0: int = -1,
+    **extra_kw,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
-    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with 
+    """Compute the SCP solution to a non-linear dynamics, quadratic cost, control problem with
     optional non-linear cost term.
 
     Args:
@@ -243,17 +244,17 @@ def scp_solve(
         reg_x (float, optional): State improvement regularization. Defaults to 1e0.
         reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
-        u_slew (Optional[np.ndarray], optional): Slew control to regularize to. Defaults to None.
-        lin_cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function. 
+        u0_slew (Optional[np.ndarray], optional): Slew control 0 to regularize to. Defaults to None.
+        lin_cost_fn (Optional[Callable], optional): Linearization of the non-linear cost function.
                                                     Defaults to None.
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
         solver_state (Optional[Dict[str, Any]], optional): Solver state. Defaults to None.
         filter_method (str, optional): Filter method to choose. Defaults to "" == no filter.
         filter_window (int, optional): Filter window to pick. Defaults to 5.
         filter_it0 (int, optional): First iteration to start filtering on. Defaults to 20.
-        return_min_viol (bool, optional): Whether to return minimum violation solution as well. 
+        return_min_viol (bool, optional): Whether to return minimum violation solution as well.
                                           Defaults to False.
-        min_viol_it0 (int, optional): First iteration to store minimum violation solutions. 
+        min_viol_it0 (int, optional): First iteration to store minimum violation solutions.
                                       Defaults to -1, which means immediately.
     Returns:
         Tuple[np.ndarray, ]: _description_
@@ -264,6 +265,19 @@ def scp_solve(
     t_elaps = time.time()
 
     # create variables and reference trajectories ##############################
+    # from jax import Array
+
+    # if isinstance(Q, Array):
+    #    print(f"Q.device = {Q.device()}")
+
+    # zs_ = [Q, R, x0, X_ref, U_ref, X_prev, U_prev, x_l, x_u, u_l, u_u]
+    # for z_ in zs_:
+    #    print(f"{type(z_)}", end="")
+    #    if isinstance(z_, Array):
+    #        print(f" device = {z_.device()}")
+    #    else:
+    #        print()
+
     x0, reg_x, reg_u = np.array(x0), float(reg_x), float(reg_u)
     Q, R = np.copy(Q), np.copy(R)
     if x0.ndim == 1:  # single particle case
@@ -288,7 +302,7 @@ def scp_solve(
         np.array(z) if z is not None else np.zeros((0, 0, 0)) for z in [x_l, x_u, u_l, u_u]
     ]
     slew_rate = slew_rate if slew_rate is None else float(slew_rate)
-    u_slew = np.array(u_slew) if u_slew is not None else None
+    u0_slew = np.array(u0_slew) if u0_slew is not None else None
     data = dict(solver_data=[], hist=[], sol_hist=[])
     Fs = []
 
@@ -312,9 +326,16 @@ def scp_solve(
         fu = fu.reshape((M, N, xdim, udim))
 
         # augment the cost or add extra constraints ################################################
-        X_ref_, U_ref_ = _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
+
+        problems = dict(f_fx_fu_fn=f_fx_fu_fn)
+        problems = dict(problems, f=f, fx=fx, fu=fu, x0=x0, X_prev=X_prev, U_prev=U_prev)
+        problems = dict(problems, slew_rate=slew_rate, u0_slew=u0_slew)
+        problems = dict(problems, x_l=x_l, x_u=x_u, u_l=u_l, u_u=u_u)
+        problems = dict(problems, Q=Q, R=R, X_ref=X_ref, U_ref=U_ref)
+        problems = dict(extra_kw, **problems)
+        X_ref_, U_ref_ = _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref, problems)
         if extra_cstrs_fns is not None:
-            solver_settings["extra_cstrs"] = tuple(extra_cstrs_fns(X_prev, U_prev))
+            solver_settings["extra_cstrs"] = tuple(extra_cstrs_fns(X_prev, U_prev, problems))
         if "extra_cstrs" in solver_settings:
             solver_settings["extra_cstrs"] = tuple(
                 [
@@ -323,7 +344,7 @@ def scp_solve(
                 ]
             )
         args_dyn = (f, fx, fu, x0, X_prev, U_prev)
-        args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u_slew)
+        args_cost = (Q, R, X_ref_, U_ref_, reg_x, reg_u, slew_rate, u0_slew)
         args_cstr = (x_l, x_u, u_l, u_u)
         solver_settings = solver_settings if solver_settings is not None else dict()
         solver_settings["solver_state"] = solver_state
@@ -405,8 +426,16 @@ def scp_solve(
         return X.reshape((N + 1, xdim)), U.reshape((N, udim)), data
 
 
-solve = scp_solve  # set an alias
-####################################################################################################
+# solve = scp_solve  # set an alias
+def solve(*args, **kwargs):
+    #from line_profiler import LineProfiler
+    #LP = LineProfiler()
+    #LP.add_function(scp_solve)
+    #ret = LP.wrap_function(scp_solve)(*args, **kwargs)
+    #LP.print_stats(output_unit=1e-3)
+    ret = scp_solve(*args, **kwargs)
+    return ret
+
 
 
 # tuning hyperparameters ###########################################################################
@@ -450,4 +479,4 @@ def tune_scp(
     return reg_x, reg_u
 
 
-####################################################################################################
+# custom root function #############################################################################

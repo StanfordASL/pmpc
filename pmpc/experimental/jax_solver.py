@@ -4,10 +4,12 @@ from copy import copy
 from jfi import jaxm
 import jfi
 import numpy as np
-from pmpc.utils import TablePrinter  # noqa: E402
+
+from ..utils import TablePrinter  # noqa: E402
 from .solver_definitions import get_pinit_state, get_prun_with_state, default_obj_fn
 from .solver_definitions import SOLVER_BFGS, SOLVER_LBFGS, SOLVER_CVX, SOLVER_SQP
 from .dynamics_definitions import get_rollout_and_linearization
+from .utils import _jax_sanitize, _to_dtype_device
 
 tree_util = jaxm.jax.tree_util
 Array = jaxm.jax.Array
@@ -183,85 +185,6 @@ def _augment_cost(
     return X_ref, U_ref
 
 
-# handling solution in a list-of-problems format ###################################################
-def _is_numeric(x):
-    """Check whether and object can be represented as a JAX array."""
-    try:
-        jaxm.array(x)
-        return True
-    except TypeError:
-        return False
-
-
-def _to_dtype_device(d: Any, device=None, dtype=None):
-    """Convert an arbitrary nested python object to specified dtype and device."""
-    return tree_util.tree_map(
-        lambda x: jaxm.to(jaxm.array(x), dtype=dtype, device=device) if _is_numeric(x) else None, d
-    )
-
-
-def _stack_problems(problems: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Stack a list of problems into the same argument structure, but batched data."""
-    assert len(problems) > 0
-    problems = list(problems)
-    prob_structure = tree_util.tree_structure(problems[0])
-    problems = [tree_util.tree_flatten(problem)[0] for problem in problems]
-    numeric_mask = [_is_numeric(val) for val in problems[0]]
-    prob_vals = [
-        np.stack([np.array(problem[i]) for problem in problems], 0)
-        if is_numeric
-        else problems[0][i]
-        for (i, is_numeric) in enumerate(numeric_mask)
-    ]
-    problems = tree_util.tree_unflatten(prob_structure, prob_vals)
-    return problems
-
-
-def _sanitize_problem(problems: Dict[str, Any]) -> Dict[str, Any]:
-    """Replace all data that cannot be expressed as a JAX array (e.g., str) with None"""
-    return tree_util.tree_map(lambda x: x if _is_numeric(x) else None, problems)
-
-
-def solve_problems(
-    problems: List[Dict[str, Any]], split: bool = False
-) -> Union[Tuple[Array, Array, Dict[str, Any]], List[Tuple[Array, Array, Dict[str, Any]]]]:
-    """Utility routine to apply `scp_solve` to a list of problems. Returns stacked solutions by
-    default.
-
-    Args:
-        problems (List[Dict[str, Any]]): List of problem definitions.
-        split (bool, optional): Whether to split the final solution into a list. Defaults to False.
-
-    Returns:
-        A list of solutions, List[[X, U, data]] or a stack solution: X, U, data.
-    """
-    solver_settings = problems[0].get("solver_settings", dict())
-    problems = _stack_problems(problems)
-    problems["solver_settings"] = solver_settings
-    f_fx_fu_fn = problems["f_fx_fu_fn"]
-    Q, R, x0 = problems["Q"], problems["R"], problems["x0"]
-    # scp_solve_kws = {k: problems[k] for k in SOLVE_KWS if k in problems}
-    scp_solve_kws = {
-        k: problems[k] for k in problems.keys() if k not in {"f_fx_fu_fn", "Q", "R", "x0"}
-    }
-    for k in ["verbose", "max_it", "res_tol", "time_limit"]:
-        if k in scp_solve_kws:
-            scp_solve_kws[k] = float(scp_solve_kws[k][0])
-    #problems = _sanitize_problem(problems)
-    X, U, data = scp_solve(f_fx_fu_fn, Q, R, x0, **scp_solve_kws)
-    if split:
-        data_struct = tree_util.tree_structure(data)
-        data = tree_util.tree_flatten(data)[0]
-        mask = [hasattr(x, "shape") and x.ndim > 0 and x.shape[0] == X.shape[0] for x in data]
-        data = [np.array(x) if m else x for (m, x) in zip(mask, data)]
-        data_list = [[x[i] if m else x for (m, x) in zip(mask, data)] for i in range(X.shape[0])]
-        data_list = [tree_util.tree_unflatten(data_struct, data) for data in data_list]
-        X, U = np.array(X), np.array(U)
-        return [(X[i, ...], U[i, ...], data_list[i]) for i in range(X.shape[0])]
-    else:
-        return X, U, data
-
-
 # SCP MPC main routine #############################################################################
 
 
@@ -288,7 +211,7 @@ def scp_solve(
     u0_slew: Optional[Array] = None,
     lin_cost_fn: Optional[Callable] = None,
     diff_cost_fn: Optional[Callable] = None,
-    cost_fn: Optional[Callable] = None, # deprecated, do not use
+    cost_fn: Optional[Callable] = None,  # deprecated, do not use
     solver_settings: Optional[Dict[str, Any]] = None,
     solver_state: Optional[Any] = None,
     return_min_viol: bool = False,
@@ -322,9 +245,9 @@ def scp_solve(
         reg_u (float, optional): Control improvement regularization. Defaults to 1e-2.
         slew_rate (float, optional): Slew rate regularization. Defaults to 0.0.
         u0_slew (Optional[Array], optional): Slew control to regularize to. Defaults to None.
-        lin_cost_fn (Optional[Callable], optional): Linearization of an extra non-linear cost 
+        lin_cost_fn (Optional[Callable], optional): Linearization of an extra non-linear cost
                                                     function. Defaults to None.
-        extra_obj_fn (Optional[Callable], optional): Extra additive obj function. Defaults to None.
+        diff_obj_fn (Optional[Callable], optional): Extra additive obj function. Defaults to None.
         solver_settings (Optional[Dict[str, Any]], optional): Solver settings. Defaults to None.
         return_min_viol (bool, optional): Whether to return minimum violation solution as well.
                                           Defaults to False.
@@ -332,7 +255,7 @@ def scp_solve(
                                       Defaults to -1, which means immediately.
         dtype: data type to use in the solver
         device: device to use in the solver (e.g., "cpu", "cuda" / "gpu")
-        differentiate_rollout: bool: Whether to differentiate the rollout function. Defaults to 
+        differentiate_rollout: bool: Whether to differentiate the rollout function. Defaults to
                                      False.
         **extra_kw: extra keyword arguments to pass to the objective function.
     Returns:
@@ -406,7 +329,6 @@ def scp_solve(
     min_viol = jaxm.inf
     # create variables and reference trajectories ##############################
 
-
     # solve sequentially, linearizing ##############################################################
     if verbose:
         print_fn(tp.make_header())
@@ -422,31 +344,38 @@ def scp_solve(
             fu = jaxm.to(jaxm.array(fu), **topts).reshape((M, N, xdim, udim))
 
         # augment the cost or add extra constraints ################################################
-        X_ref_, U_ref_ = _augment_cost(lin_cost_fn, X_prev, U_prev, Q, R, X_ref, U_ref)
         if "extra_cstrs_fns" in extra_kw:
             msg = "The GPU version does not support custom convex constraints. "
-            msg += "Please provide an `extra_obj_fn: Callable[[X, U], Dict[str, Array]]` instead.\n"
-            msg += "i.e., The function signature should be `extra_obj_fn(X, U, problem)` where "
+            msg += "Please provide an `diff_obj_fn: Callable[[X, U], Dict[str, Array]]` instead.\n"
+            msg += "i.e., The function signature should be `diff_obj_fn(X, U, problem)` where "
             msg += "`problem` contains problem data."
             raise ValueError(msg)
         problems = dict(f_fx_fu_fn=f_fx_fu_fn)
         problems = dict(problems, f=f, fx=fx, fu=fu, x0=x0, X_prev=X_prev, U_prev=U_prev)
-        problems = dict(problems, Q=Q, R=R, X_ref=X_ref_, U_ref=U_ref_)
         problems = dict(problems, slew_rate=slew_rate, u0_slew=u0_slew)
         problems = dict(problems, x_l=x_l, x_u=x_u, u_l=u_l, u_u=u_u)
-        # add user-provided extra arguments
+        problems = dict(problems, Q=Q, R=R, X_ref=X_ref, U_ref=U_ref)
         problems = dict(_to_dtype_device(extra_kw, **topts), **problems)
+        # add user-provided extra arguments
         solver_settings = solver_settings if solver_settings is not None else dict()
         solver_settings["solver_state"] = solver_state
-        kw = dict(solver_settings=solver_settings)
-        smooth_alpha = kw["solver_settings"].get("smooth_alpha", 1e2)
-        if "device" in solver_settings:
+        smooth_alpha = solver_settings.get("smooth_alpha", 1e2)
+        if it == 0 and "device" in solver_settings:
             msg = "Warning: `device` option is not supported in `solver_settings`, "
             msg += "specify it via a keyword to the `solve` function directly instead."
             raise ValueError(msg)
-        kw["solver_settings"] = dict(
-            kw["solver_settings"], smooth_alpha=smooth_alpha, device=device
+        solver_settings = dict(solver_settings, smooth_alpha=smooth_alpha, device=device)
+        X_ref_, U_ref_ = _augment_cost(
+            lin_cost_fn,
+            X_prev,
+            U_prev,
+            Q,
+            R,
+            X_ref,
+            U_ref,
+            dict(problems, solver_settings=_jax_sanitize(solver_settings)),
         )
+        problems = dict(problems, X_ref=X_ref_, U_ref=U_ref_)
         # augment the cost or add extra constraints ################################################
 
         # call the main affine problem solver ######################################################
@@ -455,7 +384,7 @@ def scp_solve(
             problems,
             reg_x,
             reg_u,
-            **kw,
+            solver_settings=solver_settings,
             diff_cost_fn=diff_cost_fn,
             differentiate_rollout=differentiate_rollout,
         )
@@ -519,5 +448,6 @@ def scp_solve(
     else:
         return X.reshape((N + 1, xdim)), U.reshape((N, udim)), data
     # return the solution ##########################################################################
+
 
 solve = scp_solve

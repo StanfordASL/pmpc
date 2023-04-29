@@ -253,10 +253,14 @@ function lcone_repr_Pq(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
   #@threads for i in 1:M
   for i in 1:M
     G_ucons = G_left_s[i][:, 1:(Nc * udim)]
-    G_rest = G_left_s[i][:, (Nc * udim + 1):end]
-    row_nb = size(G_ucons, 1)
-    mf = N * xdim + Nf * udim
-    Gs[i] = hcat(G_ucons, spzeros(row_nb, mf * (i - 1)), G_rest, spzeros(row_nb, mf * (M - i)))
+    G_rest_u = G_left_s[i][:, (Nc * udim + 1):N * udim]
+    G_x = G_left_s[i][:, (N * udim + 1):end]
+    #@assert size(G_ucons, 2) == Nc * udim
+    #@assert size(G_rest_u, 2) == Nf * udim
+    #@assert size(G_x, 2) == N * xdim
+    m = size(G_ucons, 1)
+    Gs[i] = hcat(G_ucons, spzeros(m, Nf * udim * (i - 1)), G_rest_u, spzeros(m, Nf * udim * (M - i)), spzeros(m, N * xdim * (i - 1)), G_x, spzeros(m, (M - i) * N * xdim))
+    #@assert size(Gs[i], 2) == udim * (Nc + M * Nf) + xdim * N * M
   end
   G_left = efficient_vcat(Gs)
   return G_left, G_right, h

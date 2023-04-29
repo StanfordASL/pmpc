@@ -6,7 +6,8 @@ from socket import gethostname, gethostbyname
 import psutil
 from copy import copy
 
-import cloudpickle as cp, zmq, zstandard, numpy as np  # noqa: E401
+import zmq, zstandard, numpy as np  # noqa: E401
+import cloudpickle as serializer
 from tqdm import tqdm
 
 try:
@@ -47,13 +48,15 @@ def call(
     library; blocking or not."""
     hostname = hostname if hostname is not None else DEFAULT_HOSTNAME
     port = port if port is not None else DEFAULT_PORT
-    msg2send = cp.dumps((sys.path, COMPRESSION_MODULE.compress(cp.dumps((method, args, kwargs)))))
+    msg2send = serializer.dumps(
+        (sys.path, COMPRESSION_MODULE.compress(serializer.dumps((method, args, kwargs))))
+    )
     if blocking:
         ctx = zmq.Context()
         sock = ctx.socket(zmq.REQ)
         sock.connect(f"tcp://{hostname}:{str(port)}")
         sock.send(msg2send)
-        return cp.loads(COMPRESSION_MODULE.decompress(sock.recv()))
+        return serializer.loads(COMPRESSION_MODULE.decompress(sock.recv()))
     else:
         ctx = zmq.Context()
         sock = ctx.socket(zmq.REQ)
@@ -66,7 +69,7 @@ def call(
         def fn():
             if sock.poll(1e-4) == zmq.POLLIN:
                 msg = sock.recv()
-                return cp.loads(COMPRESSION_MODULE.decompress(msg))
+                return serializer.loads(COMPRESSION_MODULE.decompress(msg))
             else:
                 return "NOT_ARRIVED_YET"
 
@@ -109,11 +112,11 @@ def start_server(
 
 def simple_call():
     Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
-    f_fx_fu_fn = lambda x, u: ( # noqa: E731
+    f_fx_fu_fn = lambda x, u: (  # noqa: E731
         np.zeros((1, 2)),
         np.eye(2)[None, ...],
         np.ones((2, 1))[None, ...],
-    )  
+    )
     args = (f_fx_fu_fn, Q, R, x0)
     solve_(*args, max_it=1, verbose=True)
     # blocking = True
@@ -197,7 +200,7 @@ def _server(
 
         # we have received a message ###############################################################
         try:
-            syspath, data = cp.loads(msg)
+            syspath, data = serializer.loads(msg)
         except (pickle.UnpicklingError, EOFError):
             continue
 
@@ -206,7 +209,7 @@ def _server(
                 sys.path.append(path)
         error_str = ""
         try:
-            method, args, kwargs = cp.loads(COMPRESSION_MODULE.decompress(data))
+            method, args, kwargs = serializer.loads(COMPRESSION_MODULE.decompress(data))
         except (
             pickle.UnpicklingError,
             EOFError,
@@ -222,7 +225,7 @@ def _server(
         if method in SUPPORTED_METHODS:
             try:
                 ret = SUPPORTED_METHODS[method](*args, **kwargs)
-                compressed = COMPRESSION_MODULE.compress(cp.dumps(ret))
+                compressed = COMPRESSION_MODULE.compress(serializer.dumps(ret))
                 sock.send(compressed)
                 continue
             except Exception:
@@ -230,7 +233,7 @@ def _server(
                 print(error_str)
 
         # always respond ###########################################################################
-        sock.send(COMPRESSION_MODULE.compress(cp.dumps(error_str)))
+        sock.send(COMPRESSION_MODULE.compress(serializer.dumps(error_str)))
         gc.collect()
         time.sleep(1e-3)
     unset_redis_status(rconn, port)
@@ -288,14 +291,13 @@ def solve_problem(
         Tuple[np.ndarray, np.ndarray, Dict[str, Any]]: Solution to the optimal control problem.
     """
     problem = copy(problem)
-    f_fx_fu_fn, P = problem["f_fx_fu_fn"], problem["P"]
+    f_fx_fu_fn = problem["f_fx_fu_fn"]
     args = problem["Q"], problem["R"], problem["x0"]
-    problem = {k: v for (k, v) in problem.items() if k in SOLVE_KWS}
-    # problem = dict(problem, return_min_viol=False, min_viol_it0=50)
+    problem = {k: v for (k, v) in problem.items() if k not in {"f_fx_fu_fn", "Q", "R", "x0"}}
     problem.setdefault("verbose", True)
     if "extra_cstrs_fn_np" in problem:
         problem["extra_cstrs_fn"] = problem["extra_cstrs_fn_np"]
-    return solve_fn(lambda X, U: f_fx_fu_fn(X, U, P), *args, **problem)
+    return solve_fn(f_fx_fu_fn, *args, **problem)
 
 
 def solve_problem_remote(
