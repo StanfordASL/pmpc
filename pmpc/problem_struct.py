@@ -1,0 +1,141 @@
+from functools import partial
+from warnings import warn
+from copy import copy
+from typing import Dict, Tuple
+from collections import Mapping
+
+import numpy as np
+
+
+class Problem(Mapping):
+    """A way of initializing an optimal control problem with a majority of
+    arguments initialized to defaults."""
+
+    dim_map: Dict[str, Tuple] = {
+        "Q": ("N", "xdim", "xdim"),
+        "R": ("N", "udim", "udim"),
+        "X_ref": ("N", "xdim"),
+        "U_ref": ("N", "udim"),
+        "X_prev": ("N", "xdim"),
+        "U_prev": ("N", "udim"),
+        "u_l": ("N", "udim"),
+        "u_u": ("N", "udim"),
+        "x_l": ("N", "udim"),
+        "x_u": ("N", "udim"),
+        "x0": ("xdim",),
+    }
+
+    def _figure_out_dims(self, **kw):
+        """Go through keword arguments to figure out dimensions of the problem."""
+        dims = dict({k: v for k, v in kw.items() if k in ["N", "xdim", "udim"]})
+        for k, v in Problem.dim_map.items():
+            if k in kw:
+                for i in range(0, -len(v) - 1, -1):
+                    dims[Problem.dim_map[k][i]] = kw[k].shape[i]
+        for k in ["N", "xdim", "udim"]:
+            if k not in dims:
+                raise ValueError(f"Missing dimension {k}")
+        return dims
+
+    def __init__(self, **kw):
+        self._dims = self._figure_out_dims(**kw)
+        self._set_defaults()
+        for k in Problem.dim_map.keys():
+            self._generate_property(k)
+        for k in self._dims.keys():
+            setattr(Problem, k, property(lambda self, k=k: self._dims[k]))
+        for (k, v) in kw.items():
+            if not k.startswith("_"):
+                try:
+                    setattr(self, k, v)
+                except AttributeError:
+                    pass
+            else:
+                warn(f"Cannot set private attribute {k}")
+
+    @property
+    def dims(self):
+        return copy(self._dims)
+
+    def __repr__(self):
+        return f"Problem({self._dims}, id={abs(hash(str(id(self))))})"
+
+    ################################################################################################
+
+    def _generate_property(self, k):
+        def _check_dims_and_tile_and_set(k, self, v):
+            correct_shape = tuple(self._dims[k_] for k_ in Problem.dim_map[k])
+            if v is not None:
+                msg = f"v does not have the correct shape, v.shape = {v.shape}, correct_shape = {correct_shape[-v.ndim:]}"
+                assert v.shape == correct_shape[-v.ndim :], msg
+                v = np.array(v)
+                v = np.tile(v, correct_shape[: -v.ndim] + ((1,) * v.ndim))
+            setattr(self, f"_{k}", v)
+
+        getter = lambda self: getattr(self, f"_{k}")
+        setter = partial(_check_dims_and_tile_and_set, k)
+        setattr(Problem, k, property(getter, setter))
+
+    ################################################################################################
+
+    def _set_defaults(self, **kw):
+        self._Q = np.tile(np.diag(np.ones((self._dims["xdim"],))), (self._dims["N"], 1, 1))
+        self._R = np.tile(np.diag(1e-1 * np.ones((self._dims["udim"],))), (self._dims["N"], 1, 1))
+        self._x0 = np.zeros((self._dims["xdim"],))
+        self._X_ref = np.zeros((self._dims["N"], self._dims["xdim"]))
+        self._U_ref = np.zeros((self._dims["N"], self._dims["udim"]))
+        self._X_prev = np.tile(self._x0, (self._dims["N"], 1))
+        self._U_prev = np.zeros((self._dims["N"], self._dims["udim"]))
+        self._u_l = None
+        self._u_u = None
+        self._x_l = None
+        self._x_u = None
+        self.solver_settings = dict()
+        self.reg_x = 1e0
+        self.reg_u = 1e0
+        self.max_it = 30
+        self.res_tol = 1e-6
+        self.verbose = True
+        self.slew_rate = 0.0
+        self.P = None
+        for k, v in kw.items():
+            setattr(self, f"_{k}", v)
+
+    def to_dict(self):
+        # most normal keys
+        keys = list(Problem.dim_map.keys()) + [
+            "solver_settings",
+            "reg_x",
+            "reg_u",
+            "max_it",
+            "res_tol",
+            "verbose",
+            "slew_rate",
+            "P",
+        ]
+        problem = {k: getattr(self, k) for k in keys}
+
+        # dynamics
+        if hasattr(self, "f_fx_fu_fn"):
+            problem["f_fx_fu_fn"] = self.f_fx_fu_fn
+        else:
+            warn("No dynamics function specified, please set `prob.f_fx_fu_fn`")
+
+        # optional keys
+        optional_keys = ["lin_cost_fn", "extra_cstrs_fns"]
+        problem = dict(problem, **{k: getattr(self, k) for k in optional_keys if hasattr(self, k)})
+
+        return problem
+
+    ################################################################################################
+
+    def __iter__(self):
+        return iter(self.to_dict().keys())
+
+    def __getitem__(self, k):
+        return self.to_dict()[k]
+
+    def __len__(self):
+        return len(self.to_dict())
+
+    ################################################################################################

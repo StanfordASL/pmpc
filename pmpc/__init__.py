@@ -28,3 +28,5 @@ SOLVE_KWS = {
     "filter_window",
     "filter_it0",
 }
+
+from .problem_struct import Problem # noqa: F401

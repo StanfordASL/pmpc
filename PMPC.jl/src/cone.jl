@@ -221,6 +221,8 @@ function Pqr2Gh(P::AA{F64, 2}, q::AA{F64, 1}, r::F64=0.0)
   end
 
   b = L' \ (-q / 2)
+  #b = F' \ (-q / 2)
+  #println("error is $(norm(b - b_prime))")
   bTb = dot(b, b)
   alf, bet = -(bTb - r) - 0.25, 0.25 - (bTb - r)
 
@@ -241,8 +243,7 @@ function lcone_repr_Pq(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
   G_left_s = Vector{SpMat{F64, Int}}(undef, M)
   G_right_s = Vector{SpMat{F64, Int}}(undef, M)
   h_s = Vector{Vector{F64}}(undef, M)
-  #@threads for i in 1:M
-  for i in 1:M
+  @threads for i in 1:M
     G_left_s[i], G_right_s[i], h_s[i] = Pqr2Gh(qp_repr_Pq(probs[i])...)
   end
   G_right = blockdiag(G_right_s...)
@@ -250,8 +251,7 @@ function lcone_repr_Pq(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
   h = reduce(vcat, h_s)
 
   Gs = Vector{SpMat{F64, Int}}(undef, M)
-  #@threads for i in 1:M
-  for i in 1:M
+  @threads for i in 1:M
     G_ucons = G_left_s[i][:, 1:(Nc * udim)]
     G_rest_u = G_left_s[i][:, (Nc * udim + 1):N * udim]
     G_x = G_left_s[i][:, (N * udim + 1):end]
@@ -262,7 +262,8 @@ function lcone_repr_Pq(probs::AA{OCProb{F64}, 1}, Nc::Integer; settings...)
     Gs[i] = hcat(G_ucons, spzeros(m, Nf * udim * (i - 1)), G_rest_u, spzeros(m, Nf * udim * (M - i)), spzeros(m, N * xdim * (i - 1)), G_x, spzeros(m, (M - i) * N * xdim))
     #@assert size(Gs[i], 2) == udim * (Nc + M * Nf) + xdim * N * M
   end
-  G_left = efficient_vcat(Gs)
+  #G_left = efficient_vcat(Gs)
+  G_left = reduce(vcat, Gs)
   return G_left, G_right, h
 end
 
