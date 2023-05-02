@@ -40,11 +40,12 @@ class Problem(Mapping):
     def __init__(self, **kw):
         self._dims = self._figure_out_dims(**kw)
         self._set_defaults()
+        self.M = kw.get("M", None)
         for k in Problem.dim_map.keys():
             self._generate_property(k)
         for k in self._dims.keys():
             setattr(Problem, k, property(lambda self, k=k: self._dims[k]))
-        for (k, v) in kw.items():
+        for k, v in kw.items():
             if not k.startswith("_"):
                 try:
                     setattr(self, k, v)
@@ -52,6 +53,9 @@ class Problem(Mapping):
                     pass
             else:
                 warn(f"Cannot set private attribute {k}")
+        self._possibly_tile_for_M()
+        if not hasattr(self, "Nc"):
+            self.Nc = 0
 
     @property
     def dims(self):
@@ -65,8 +69,11 @@ class Problem(Mapping):
     def _generate_property(self, k):
         def _check_dims_and_tile_and_set(k, self, v):
             correct_shape = tuple(self._dims[k_] for k_ in Problem.dim_map[k])
+            if self.M is not None:
+                correct_shape = (self.M,) + correct_shape
             if v is not None:
-                msg = f"v does not have the correct shape, v.shape = {v.shape}, correct_shape = {correct_shape[-v.ndim:]}"
+                msg = f"v does not have the correct shape, v.shape = {v.shape}, "
+                msg = msg + f"correct_shape = {correct_shape[-v.ndim:]}"
                 assert v.shape == correct_shape[-v.ndim :], msg
                 v = np.array(v)
                 v = np.tile(v, correct_shape[: -v.ndim] + ((1,) * v.ndim))
@@ -86,34 +93,41 @@ class Problem(Mapping):
         self._U_ref = np.zeros((self._dims["N"], self._dims["udim"]))
         self._X_prev = np.tile(self._x0, (self._dims["N"], 1))
         self._U_prev = np.zeros((self._dims["N"], self._dims["udim"]))
-        self._u_l = None
-        self._u_u = None
-        self._x_l = None
-        self._x_u = None
+        self._u_l, self._u_u, self._x_l, self._x_u = None, None, None, None
         self.solver_settings = dict()
-        self.reg_x = 1e0
-        self.reg_u = 1e0
-        self.max_it = 30
-        self.res_tol = 1e-6
-        self.verbose = True
-        self.slew_rate = 0.0
+        self.reg_x, self.reg_u, self.max_it, self.res_tol, self.verbose = 1e0, 1e0, 30, 1e-6, True
+        self.slew_rate = None
         self.P = None
         for k, v in kw.items():
             setattr(self, f"_{k}", v)
 
+    def _possibly_tile_for_M(self):
+        if self.M is None:
+            return
+        keys = ["_Q", "_R", "_X_ref", "_U_ref", "_X_prev", "_U_prev", "_x0"]
+        keys += ["_u_l", "_u_u", "_x_l", "_x_u", "P"]
+        for key in keys:
+            v = getattr(self, key)
+            if v is not None:
+                if key[1:] in Problem.dim_map:
+                    dim_num = len(Problem.dim_map[key[1:]])
+                    assert v.ndim in [dim_num + 1, dim_num]
+                    if v.ndim == dim_num:
+                        v = np.tile(v, (self.M,) + ((1,) * v.ndim))
+                        setattr(self, key, v)
+
     def to_dict(self):
         # most normal keys
-        keys = list(Problem.dim_map.keys()) + [
-            "solver_settings",
-            "reg_x",
-            "reg_u",
-            "max_it",
-            "res_tol",
-            "verbose",
-            "slew_rate",
-            "P",
-        ]
-        problem = {k: getattr(self, k) for k in keys}
+        keys = list(Problem.dim_map.keys())
+        keys += ["solver_settings", "reg_x", "reg_u", "max_it", "res_tol", "verbose", "slew_rate"]
+        keys += ["P"]
+        problem = {k: getattr(self, k, None) for k in keys}
+        if self.M is not None:
+            if "Nc" in problem["solver_settings"] and problem["solver_settings"]["Nc"] != self.Nc:
+                msg = "Nc specified in solver_settings, but Problem specifies Nc via a property."
+                msg += f" We will use Nc = {self.Nc} from the Problem."
+                warn(msg)
+            problem["solver_settings"]["Nc"] = self.Nc
 
         # dynamics
         if hasattr(self, "f_fx_fu_fn"):

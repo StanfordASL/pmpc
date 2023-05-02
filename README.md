@@ -7,6 +7,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
 # Table of Contents 
 - [`pmpc`](#pmpc)
 - [Table of Contents](#table-of-contents)
+- [Quick Start](#quick-start)
 - [Installation](#installation)
   - [(Optional) Obtaining (a dynamically linked version of) Python](#optional-obtaining-a-dynamically-linked-version-of-python)
   - [Compilation Times and a Persistent Solver Process](#compilation-times-and-a-persistent-solver-process)
@@ -32,6 +33,10 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
   - [Solver selection](#solver-selection)
 - [Particle (consensus/contingency) optimization](#particle-consensuscontingency-optimization)
 - [Warm-start support](#warm-start-support)
+
+# Quick Start
+
+Take a look at `examples/simple_demo.ipynb`.
 
 # Installation
 
