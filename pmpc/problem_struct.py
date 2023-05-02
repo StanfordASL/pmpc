@@ -2,7 +2,7 @@ from functools import partial
 from warnings import warn
 from copy import copy
 from typing import Dict, Tuple
-from collections import Mapping
+from collections.abc import Mapping
 
 import numpy as np
 
