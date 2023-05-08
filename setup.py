@@ -20,21 +20,23 @@ def install_julia_package():
     jl = None
 
     try:
-        from julia import Main as jl 
+        from julia import Main as jl
+
         success = True
     except julia.core.UnsupportedPythonError:
         success = False
     if not success:
         try:
             julia.install()
-            from julia import Main as jl # noqa: F811
+            from julia import Main as jl  # noqa: F811
+
             success = True
         except julia.core.UnsupportedPythonError:
             success = False
     if not success:
         try:
             julia.Julia(compiled_modules=False)
-            from julia import Main as jl # noqa: F811
+            from julia import Main as jl  # noqa: F811
         except julia.core.UnsupportedPythonError:
             pass
 
@@ -76,7 +78,16 @@ setup(
     name="pmpc",
     version="0.6.0",
     packages=find_packages(),
-    install_requires=["numpy", "julia", "zstandard", "pyzmq", "cloudpickle", "redis"],
+    install_requires=[
+        "numpy",
+        "julia",
+        "zstandard",
+        "pyzmq",
+        "cloudpickle",
+        "redis",
+        "tqdm",
+        "psutil",
+    ],
     dependency_links=[],
     include_package_data=True,
     cmdclass=dict(develop=PostDevelopCommand, install=PostInstallCommand),

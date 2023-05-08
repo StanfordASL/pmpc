@@ -29,14 +29,28 @@ def install_package_julia_version(julia_runtime=None):
     assert julia_runtime is not None
     version = get_julia_version(julia_runtime)
     trace_path = str(Path(pmpc_path) / "src" / "traces" / f"trace_{version}.jl")
-    julia_prog = f"""
-using Pkg
-Pkg.activate("{pmpc_path}")
-Pkg.add("PackageCompiler")
-include("{compilation_utils_path}")
-fix_tracefile("{trace_path}")
+#    julia_prog = f"""
+#using Pkg
+#Pkg.activate("{pmpc_path}")
+#Pkg.add("PackageCompiler")
+#include("{compilation_utils_path}")
+#fix_tracefile("{trace_path}")
+#    """
+    #check_call([julia_runtime, "-e", julia_prog])
+    python_prog = f"""
+from julia import Julia
+try:
+    Julia(runtime="{julia_runtime}")
+except:
+    Julia(runtime="{julia_runtime}", compiled_modules=False)
+from julia import Main as jl
+jl.using("Pkg")
+jl.eval('Pkg.add("PackageCompiler")')
+jl.using("PackageCompiler")
+jl.include("{compilation_utils_path}")
+jl.fix_tracefile("{trace_path}")
     """
-    check_call([julia_runtime, "-e", julia_prog])
+    check_call([sys.executable, "-c", python_prog])
     shutil.copy(
         Path(pmpc_path) / "src" / "traces" / f"trace_{version}.jl",
         Path(pmpc_path) / "src" / "precompile.jl",
