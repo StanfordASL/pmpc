@@ -129,7 +129,10 @@ def precompilation_call():
             p.solver_settings = dict(solver_settings, solver=solver)
             if smooth and solver in ["ecos", "jump"]:
                 p.solver_settings = dict(p.solver_settings, smooth_cstr="logbarrier", smooth_alpha=1e1)
-            solve_(**p)
+            try:
+                solve_(**p)
+            except RuntimeError:
+                pass # Mosek might be missing a license
 
     #Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
     #f_fx_fu_fn = lambda x, u: (  # noqa: E731
