@@ -1,17 +1,40 @@
 #### library imports ###########################################################
+import re
 import time
+import shutil
+from pathlib import Path
+from subprocess import check_output
 
 import numpy as np
 
 
+def get_julia_version(julia_runtime=None):
+    """Read the current (major = x.x) Julia version."""
+    if julia_runtime is None:
+        julia_runtime = shutil.which("julia")
+    assert julia_runtime is not None
+    output = check_output([julia_runtime, "--version"]).decode("utf-8")
+    m = re.search(r"([0-9]+\.[0-9]+)\.[0-9]+", output)
+    assert m is not None
+    return m.group(1)
+
+
+JULIA_VERSION = get_julia_version()
+SYSIMAGE_PATH = Path("~").expanduser() / ".cache" / "pmpc" / f"pmpc_sysimage_{JULIA_VERSION}.so"
+
+
 ################################################################################
 #### loading julia and including the library source files in julia #############
-def load_julia(verbose=False):
+def load_julia(verbose=False, **kw):
     t = time.time()
     try:
         import julia
 
-        julia.Julia()
+        #SYSIMAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if SYSIMAGE_PATH.exists():
+            kw["sysimage"] = str(SYSIMAGE_PATH)
+
+        julia.Julia(**kw)
         recompiled = False
     except Exception as e:
         print(e)
@@ -19,7 +42,7 @@ def load_julia(verbose=False):
             print("Using cache failed, recompiling...")
         import julia
 
-        julia.Julia(compiled_modules=False)
+        julia.Julia(**dict(kw, compiled_modules=False))
         recompiled = True
     from julia import Main as jl
 
@@ -42,34 +65,38 @@ def py2jl(x, keep: int = 1):
     # keep, batch = keep_ndims, n - keep_ndims
     return np.transpose(
         # x, tuple(range(-keep, 0)) + tuple(range(batch - 1, -1, -1))
-        x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1))
+        x,
+        tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1)),
     )
 
 
 def jl2py(x, keep: int = 1):
-    #n = len(np.shape(x))
+    # n = len(np.shape(x))
     n = x.ndim
     # keep, batch = keep_ndims, n - keep_ndims
     return np.transpose(
         # x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep))
-        x, tuple(range(n - 1, keep - 1, -1)) + tuple(range(0, keep))
+        x,
+        tuple(range(n - 1, keep - 1, -1)) + tuple(range(0, keep)),
     )
+
 
 #### optimized memory layout conversion routines ###############################
 try:
     import jax
     from jax import numpy as jnp
+
     @jax.jit
     def py2jl_jit(x, order):
         # return jnp.transpose(x, tuple(range(n - keep, n)) + tuple(range(n - keep - 1, -1, -1)))
         return jnp.transpose(x, order)
-
 
     @jax.jit
     def jl2py_jit(x, keep_ndims=1):
         n = len(jnp.shape(x))
         keep, batch = keep_ndims, n - keep_ndims
         return jnp.transpose(x, tuple(range(-1, -batch - 1, -1)) + tuple(range(0, keep)))
+
 except ModuleNotFoundError:
     jax, jnp, py2jl_jit, jl2py_jit = None, None, None, None
 

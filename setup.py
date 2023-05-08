@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 
+import sys
 import os
+from pathlib import Path
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 from setuptools.command.develop import develop
+
+
+sys.path.insert(0, str(Path(__file__).absolute().parent / "PMPC.jl" / "scripts"))
+from tools import install_package_julia_version, get_julia_version
 
 
 # custom julia installation script for the PMPC module #######
@@ -34,6 +40,8 @@ def install_julia_package():
 
     print("Installing the PMPC package...")
     try:
+        print(f"Julia version = {get_julia_version()}")
+        install_package_julia_version()
         install_PMPC = """
         using Pkg
         Pkg.develop(PackageSpec(path="%s"))
@@ -51,16 +59,16 @@ class PostDevelopCommand(develop):
     """Post-installation for development mode."""
 
     def run(self):
-        develop.run(self)
         install_julia_package()
+        develop.run(self)
 
 
 class PostInstallCommand(install):
     """Post-installation for installation mode."""
 
     def run(self):
-        install.run(self)
         install_julia_package()
+        install.run(self)
 
 
 # perform setup ##############################################

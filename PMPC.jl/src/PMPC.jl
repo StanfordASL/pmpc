@@ -31,6 +31,6 @@ include("cone.jl")
 include("main.jl")
 include("memory_utils.jl")
 
-#include("precompile.jl")
+include("precompile.jl")
 
 end # module

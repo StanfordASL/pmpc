@@ -17,6 +17,7 @@ except ModuleNotFoundError:
 
 from . import SOLVE_KWS
 from .scp_mpc import solve as solve_, tune_scp as tune_scp_, lqp_generate_problem_matrices
+from .problem_struct import Problem
 
 SUPPORTED_METHODS = dict(
     solve=solve_, tune_scp=tune_scp_, lqp_generate_problem_matrices=lqp_generate_problem_matrices
@@ -110,15 +111,35 @@ def start_server(
     SERVERS[port] = Server(port, redis_config)
 
 
-def simple_call():
-    Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
-    f_fx_fu_fn = lambda x, u: (  # noqa: E731
-        np.zeros((1, 2)),
-        np.eye(2)[None, ...],
-        np.ones((2, 1))[None, ...],
-    )
-    args = (f_fx_fu_fn, Q, R, x0)
-    solve_(*args, max_it=1, verbose=True)
+def precompilation_call():
+    p = Problem(N=20, xdim=4, udim=2, x0=np.random.randn(4), res_tol=-1.0, max_it=5)
+    A = np.random.randn(p.xdim, p.xdim) + 0.4 * np.eye(p.xdim)
+    A = np.tile(A, (p.N, 1, 1))
+    B = np.tile(np.array([[0.0, 0.0, 0.0, 0.3], [0.0, 0.0, 0.3, 0.0]]).T, (p.N, 1, 1))
+
+    def linear_dynamics_f_fx_fu_fn(x, u, p=None):
+        xp = (A @ x[..., None])[..., 0] + (B @ u[..., None])[..., 0]
+        return xp, A, B
+
+    p.f_fx_fu_fn = linear_dynamics_f_fx_fu_fn
+    p.u_l, p.u_u = -10 * np.ones((p.N, p.udim)), 10 * np.ones((p.N, p.udim))
+    solver_settings = copy(p.solver_settings)
+    for solver in ["ecos", "osqp", "jump"]:
+        for smooth in [True, False]:
+            p.solver_settings = dict(solver_settings, solver=solver)
+            if smooth and solver in ["ecos", "jump"]:
+                p.solver_settings = dict(p.solver_settings, smooth_cstr="logbarrier", smooth_alpha=1e1)
+            solve_(**p)
+
+    #Q, R, x0 = np.eye(2)[None, ...], np.eye(1)[None, ...], np.zeros(2)
+    #f_fx_fu_fn = lambda x, u: (  # noqa: E731
+    #    np.zeros((1, 2)),
+    #    np.eye(2)[None, ...],
+    #    np.ones((2, 1))[None, ...],
+    #)
+    #args = (f_fx_fu_fn, Q, R, x0)
+    #solve_(*args, max_it=1, verbose=True)
+
     # blocking = True
     # call("solve", gethostbyname(hostname), port, blocking, *args, max_it=1, verbose=True)
 
@@ -181,7 +202,7 @@ def _server(
     # precompile ###################################################################################
     print("Starting precompilation...")
     status_flag.value = time.time() + 60.0  # allow 60 seconds for precompilation
-    simple_call()
+    precompilation_call()
     print("Precompilation done")
 
     rconn, redis_update = get_redis_connection(redis_config), time.time() - 10.0
