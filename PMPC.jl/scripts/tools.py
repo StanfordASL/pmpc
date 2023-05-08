@@ -28,6 +28,15 @@ def install_package_julia_version(julia_runtime=None):
         julia_runtime = shutil.which("julia")
     assert julia_runtime is not None
     version = get_julia_version(julia_runtime)
+    trace_path = str(Path(pmpc_path) / "src" / "traces" / f"trace_{version}.jl")
+    julia_prog = f"""
+using Pkg
+Pkg.activate("{pmpc_path}")
+Pkg.add("PackageCompiler")
+include("{compilation_utils_path}")
+fix_tracefile("{trace_path}")
+    """
+    check_call([julia_runtime, "-e", julia_prog])
     shutil.copy(
         Path(pmpc_path) / "src" / "traces" / f"trace_{version}.jl",
         Path(pmpc_path) / "src" / "precompile.jl",
