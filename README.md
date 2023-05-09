@@ -17,7 +17,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
   - [Defining dynamics](#defining-dynamics)
   - [Defining Cost](#defining-cost)
 - [`solve` Method Arguments Glossary](#solve-method-arguments-glossary)
-  - [zolver Hyperparameters](#zolver-hyperparameters)
+  - [Solver Hyperparameters](#solver-hyperparameters)
   - [Solver Settings](#solver-settings)
   - [Additional Dynamics Settings](#additional-dynamics-settings)
   - [Nonlinear Cost and Constraints](#nonlinear-cost-and-constraints)
@@ -142,9 +142,7 @@ np.shape(fu) == (N, xdim, udim)
 
 The cost is given as 
 
-$$J = \sum_{i=0}^N 
-\frac{1}{2} (x^{(i+1)} - x_\text{ref}^{(i+1)}) Q^{(i)} (x^{(i+1)} - x_\text{ref}^{(i+1)}) + 
-\frac{1}{2} (u^{(i)} - u_\text{ref}^{(i)}) R^{(i)} (u^{(i)} - u_\text{ref}^{(i)})$$
+$$J = \sum_{i=0}^N \frac{1}{2} (x^{(i+1)} - x_\text{ref}^{(i+1)}) Q^{(i)} (x^{(i+1)} - x_\text{ref}^{(i+1)}) + \frac{1}{2} (u^{(i)} - u_\text{ref}^{(i)}) R^{(i)} (u^{(i)} - u_\text{ref}^{(i)})$$
 
 *Note: Initial state, x0, is assumed constant and thus does not feature in the cost.*
 
@@ -166,13 +164,11 @@ Take a look at
 
 # `solve` Method Arguments Glossary
 
-## zolver Hyperparameters
+## Solver Hyperparameters
 
 The solver has two scalar hyperparamters, the dynamics linearization deviation penalty for states and controls
 
-$$J_\text{deviation} = \sum_{i=0}^N \frac{1}{2} 
-\rho_x (x^{(i+1)} - x_\text{prev}^{(i+1)})^T (x^{(i+1)} - x_\text{prev}^{(i+1)})
-+ \rho_u (u^{(i)} - u_\text{prev}^{(i)})^T (u^{(i)} - u_\text{prev}^{(i)})$$
+$$J_\text{deviation} = \sum_{i=0}^N \frac{1}{2} \rho_x (x^{(i+1)} - x_\text{prev}^{(i+1)})^T (x^{(i+1)} - x_\text{prev}^{(i+1)}) + \rho_u (u^{(i)} - u_\text{prev}^{(i)})^T (u^{(i)} - u_\text{prev}^{(i)})$$
 
 - `reg_x` - state deviation in-between SCP iterations regularization
 - `reg_u` - control deviation in-between SCP iterations regularization
