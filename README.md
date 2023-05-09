@@ -9,6 +9,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
 - [Table of Contents](#table-of-contents)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
+  - [Installation Requirements](#installation-requirements)
   - [(Optional) Obtaining (a dynamically linked version of) Python](#optional-obtaining-a-dynamically-linked-version-of-python)
   - [Compilation Times and a Persistent Solver Process](#compilation-times-and-a-persistent-solver-process)
   - [Obtaining Julia](#obtaining-julia)
@@ -16,7 +17,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
   - [Defining dynamics](#defining-dynamics)
   - [Defining Cost](#defining-cost)
 - [`solve` Method Arguments Glossary](#solve-method-arguments-glossary)
-  - [Solver Hyperparameters](#solver-hyperparameters)
+  - [zolver Hyperparameters](#zolver-hyperparameters)
   - [Solver Settings](#solver-settings)
   - [Additional Dynamics Settings](#additional-dynamics-settings)
   - [Nonlinear Cost and Constraints](#nonlinear-cost-and-constraints)
@@ -48,7 +49,17 @@ $ cd pmpc
 $ pip install .
 ```
 
-*Note: you must have [julia](https://julialang.org/) in your system PATH.*
+## Installation Requirements
+
+We **require** that
+- you must have [julia](https://julialang.org/) in your system `PATH`
+- Julia version is `{1.6, 1.7, 1.8, 1.9}`
+
+We **highly recommend** that
+- obtain a dynamically linked Python 
+  - which will make the `julia` Python interface startup much faster
+- obtain Julia 1.9
+  - this version introduces a *vastly* faster time-to-first-run via better compilation utilities 
 
 Further subsections explain some **optional** installation steps.
 
@@ -155,15 +166,13 @@ Take a look at
 
 # `solve` Method Arguments Glossary
 
-## Solver Hyperparameters
+## zolver Hyperparameters
 
 The solver has two scalar hyperparamters, the dynamics linearization deviation penalty for states and controls
 
-$$
-J_\text{deviation} = \sum_{i=0}^N \frac{1}{2} 
+$$J_\text{deviation} = \sum_{i=0}^N \frac{1}{2} 
 \rho_x (x^{(i+1)} - x_\text{prev}^{(i+1)})^T (x^{(i+1)} - x_\text{prev}^{(i+1)})
-+ \rho_u (u^{(i)} - u_\text{prev}^{(i)})^T (u^{(i)} - u_\text{prev}^{(i)})
-$$
++ \rho_u (u^{(i)} - u_\text{prev}^{(i)})^T (u^{(i)} - u_\text{prev}^{(i)})$$
 
 - `reg_x` - state deviation in-between SCP iterations regularization
 - `reg_u` - control deviation in-between SCP iterations regularization
