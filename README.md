@@ -384,3 +384,14 @@ Warm-starting of the SCP procedure by providing a good `X_prev, U_prev` guess is
 
 Warm-starting of the underlying convex solver is currently not supported, as it does not lead to a noticeable
 performance improvement on problems we tested the solver on.
+
+# Citing This Work
+
+```
+@inproceedings{dyro2021particle,
+  author = {Dyro, Robert and Harrison, James and Sharma, Apoorva and Pavone, M.},
+  title = {{P}article {M}{P}{C} for {U}ncertain and {L}earning-{B}ased {C}ontrol},
+  booktitle = {{I}{E}{E}{E}/{R}{J}{S} {I}nternational {C}onference on {I}ntelligent {R}{O}bots and {S}ystems},
+  year = {2021},
+}
+```

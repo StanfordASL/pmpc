@@ -38,7 +38,7 @@ def _masked_rollout_step(
     return xp, xp
 
 
-@autojit
+#@autojit
 def masked_rollout(
     f: Callable, X: Array, U: Array, P: Optional[Array] = None, mask: Optional[Array] = None
 ):

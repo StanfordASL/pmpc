@@ -8,6 +8,7 @@ from copy import copy
 
 import zmq, zstandard, numpy as np  # noqa: E401
 import cloudpickle as serializer
+#import dill as serializer
 from tqdm import tqdm
 
 try:
@@ -34,6 +35,24 @@ if os.getenv("REDIS_PORT", None) is not None:
     REDIS_CONFIG["port"] = int(os.getenv("REDIS_PORT"))
 if os.getenv("REDIS_PASSWORD", None) is not None:
     REDIS_CONFIG["password"] = os.getenv("REDIS_PASSWORD")
+
+####################################################################################################
+
+REGISTERED_FUNCTIONS_CACHE = dict()
+
+
+class RegisteredFunction:
+    """A function carrying its own hash to be referenced instead of recompiled."""
+
+    def __init__(self, fn: Callable) -> None:
+        self.fn, self.hash = fn, serializer.dumps(fn)
+
+    def __call__(self, *args, **kwargs):
+        if self.hash not in REGISTERED_FUNCTIONS_CACHE:
+            REGISTERED_FUNCTIONS_CACHE[self.hash] = self
+            return self.fn(*args, **kwargs)
+        else:
+            return REGISTERED_FUNCTIONS_CACHE[self.hash].fn(*args, **kwargs)
 
 
 ## calling utilities ###############################################################################

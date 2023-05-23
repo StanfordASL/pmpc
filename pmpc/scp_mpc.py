@@ -415,9 +415,9 @@ def scp_solve(
         print_fn(tp.make_footer())
     if verbose and max_res > 1e-2:
         msg = "Bad solution found, the solution is approximate to a residual:"
-        print_fn("#" * 80)
+        print_fn("#" * 73)
         print_fn(msg, "%9.4e" % max_res)
-        print_fn("#" * 80)
+        print_fn("#" * 73)
     if not debug:
         del data["sol_hist"]
     if not single_particle_problem_flag:
@@ -428,12 +428,14 @@ def scp_solve(
 
 # solve = scp_solve  # set an alias
 def solve(*args, **kwargs):
-    #from line_profiler import LineProfiler
-    #LP = LineProfiler()
-    #LP.add_function(scp_solve)
-    #ret = LP.wrap_function(scp_solve)(*args, **kwargs)
-    #LP.print_stats(output_unit=1e-3)
-    ret = scp_solve(*args, **kwargs)
+    if kwargs.get("profile", False):
+        from line_profiler import LineProfiler
+        LP = LineProfiler()
+        LP.add_function(scp_solve)
+        ret = LP.wrap_function(scp_solve)(*args, **kwargs)
+        LP.print_stats(output_unit=1e-3)
+    else:
+        ret = scp_solve(*args, **kwargs)
     return ret
 
 

@@ -20,8 +20,8 @@ class Problem(Mapping):
         "U_prev": ("N", "udim"),
         "u_l": ("N", "udim"),
         "u_u": ("N", "udim"),
-        "x_l": ("N", "udim"),
-        "x_u": ("N", "udim"),
+        "x_l": ("N", "xdim"),
+        "x_u": ("N", "xdim"),
         "x0": ("xdim",),
     }
 
