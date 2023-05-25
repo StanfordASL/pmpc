@@ -156,11 +156,11 @@ if __name__ == "__main__":
     julia_runtime = str(Path("~").expanduser() / ".juliaup" / "bin" / "julia")
     versions = ["1.6", "1.7", "1.8", "1.9"]
 
-    #for version in versions:
-    #   check_call([juliaup_cmd, "default", version])
-    #   generate_for_julia_version(julia_runtime)
-
     for version in versions:
-        check_call([juliaup_cmd, "default", version])
-        install_package_julia_version(julia_runtime)
-        make_sysimage(julia_runtime)
+       check_call([juliaup_cmd, "default", version])
+       generate_for_julia_version(julia_runtime)
+
+    #for version in versions:
+    #    check_call([juliaup_cmd, "default", version])
+    #    install_package_julia_version(julia_runtime)
+    #    make_sysimage(julia_runtime)

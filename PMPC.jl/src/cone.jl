@@ -146,16 +146,15 @@ function JuMP_solve(problem::ConeProblem; settings...)
   b = b != nothing ? b : zeros(0)
   (G != nothing && !(typeof(G) <: SpMat{F64, Int})) && (problem.G = sparse(G))
   (A != nothing && !(typeof(A) <: SpMat{F64, Int})) && (problem.A = sparse(A))
+  settings = Dict{Symbol, Any}(settings...)
+  get!(settings, :solver_name, "ECOS")
 
-  if false
-    model = JuMP.Model(
-      optimizer_with_attributes(
-        () -> ECOS.Optimizer(),
-        Dict([string(p.first) => p.second for p in settings])...,
-      ),
-    )
+  if lowercase(settings[:solver_name]) == "ecos"
+    settings = Dict([string(p.first) => p.second for p in settings if p.first != :solver_name])
+    model = JuMP.Model(optimizer_with_attributes(() -> ECOS.Optimizer(), settings...))
   else
-    model = JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !get(settings, :verbose, false)))
+    verbose = get(settings, :verbose, false)
+    model = JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !verbose))
   end
   z = @variable(model, z[1:length(problem.c)])
   cstr = []

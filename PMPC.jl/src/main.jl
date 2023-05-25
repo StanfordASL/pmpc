@@ -318,11 +318,12 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
 
   # solve
   @assert lowercase(settings[:solver]) in ["ecos", "cosmo", "jump", "mosek"]
-  if lowercase(settings[:solver]) == "ecos"
+  if false && lowercase(settings[:solver]) == "ecos"
+    error("Currently broken.")
     sol = ECOS_solve(cone_problem; solver_settings...)
   elseif lowercase(settings[:solver]) == "cosmo"
     sol = COSMO_solve(cone_problem; solver_settings...)
-  elseif lowercase(settings[:solver]) in ["jump", "mosek"]
+  elseif lowercase(settings[:solver]) in ["jump", "mosek", "ecos"]
     sol = JuMP_solve(cone_problem; solver_settings...)
   end
 
