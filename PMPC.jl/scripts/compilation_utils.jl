@@ -84,6 +84,7 @@ function fix_tracefile(trace_file)
     write(f, filecontents)
   end
 
+  # comment out all the lines that throw errors ################################
   while true
     try
       include(trace_file)

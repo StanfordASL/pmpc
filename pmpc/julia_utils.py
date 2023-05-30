@@ -1,4 +1,5 @@
 #### library imports ###########################################################
+import sys
 import re
 import time
 import shutil
@@ -20,7 +21,8 @@ def get_julia_version(julia_runtime=None):
 
 
 JULIA_VERSION = get_julia_version()
-SYSIMAGE_PATH = Path("~").expanduser() / ".cache" / "pmpc" / f"pmpc_sysimage_{JULIA_VERSION}.so"
+PYTHON_VERSION = ".".join(map(str, sys.version_info[:3]))
+SYSIMAGE_PATH = Path("~").expanduser() / ".cache" / "pmpc" / f"pmpc_sysimage_j{JULIA_VERSION}_p{PYTHON_VERSION}.so"
 
 
 ################################################################################

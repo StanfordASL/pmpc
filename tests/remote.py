@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt, numpy as np
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import pmpc
-from pmpc.remote import solve
+#from pmpc.remote import solve
+from pmpc.remote import call
+solve = lambda *args, **kw: call("solve", None, 5678, True, *args, **kw)
 
 from dubins_car import f_np as f_fn, fx_np as fx_fn, fu_np as fu_fn
 

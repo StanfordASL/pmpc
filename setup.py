@@ -9,7 +9,7 @@ from setuptools.command.develop import develop
 
 
 sys.path.insert(0, str(Path(__file__).absolute().parent / "PMPC.jl" / "scripts"))
-from tools import install_package_julia_version, get_julia_version
+from tools import install_package_julia_version, get_julia_version, make_sysimage
 
 
 # custom julia installation script for the PMPC module #######
@@ -44,13 +44,7 @@ def install_julia_package():
     try:
         print(f"Julia version = {get_julia_version()}")
         install_package_julia_version()
-        install_PMPC = """
-        using Pkg
-        Pkg.develop(PackageSpec(path="%s"))
-        """ % os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "PMPC.jl"
-        )
-        jl.eval(install_PMPC)
+        make_sysimage()
     except Exception as e:
         print(e)
         pass

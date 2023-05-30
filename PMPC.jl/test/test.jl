@@ -824,5 +824,6 @@ for test in tests
   try
     test()
   catch
+      println("$(test) failed")
   end
 end

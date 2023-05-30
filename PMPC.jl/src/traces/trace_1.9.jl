@@ -231,14 +231,14 @@ precompile(Tuple{typeof(Base.unsafe_convert), Type{Ptr{Float64}}, Ptr{Nothing}})
 precompile(Tuple{Type{NamedTuple{(:expand_only,), T} where T<:Tuple}, Tuple{Bool}})
 precompile(Tuple{typeof(Base.convert), Type{Ptr{SparseArrays.LibSuiteSparse.cholmod_dense_struct}}, Ptr{Nothing}})
 precompile(Tuple{typeof(Base.abs2), Float64})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#413#threadsfor_fun#74"{PMPC.var"#413#threadsfor_fun#72#75"{Array{PMPC.OCProb{Float64}, 1}, Array{Array{Float64, 1}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Base.UnitRange{Int64}}}, Int64}})
 precompile(Tuple{typeof(Base.getindex), Base.SubArray{Float64, 3, Array{Float64, 4}, Tuple{Base.Slice{Base.OneTo{Int64}}, Base.Slice{Base.OneTo{Int64}}, Base.Slice{Base.OneTo{Int64}}, Int64}, true}, Int64, Int64, Int64})
 precompile(Tuple{typeof(Base.setindex!), Array{Float64, 1}, Float64, Int64})
 precompile(Tuple{typeof(Base.:(*)), Float64, Base.SubArray{Float64, 1, Array{Float64, 2}, Tuple{Base.Slice{Base.OneTo{Int64}}, Int64}, true}})
@@ -276,14 +276,14 @@ precompile(Tuple{typeof(Base.__cat), SparseArrays.SparseVector{Float64, Int64}, 
 precompile(Tuple{typeof(Base.__cat_offset!), SparseArrays.SparseVector{Float64, Int64}, Tuple{Int64}, Tuple{Bool}, Tuple{Int64}, SparseArrays.SparseVector{Float64, Int64}, Float64, Vararg{Any}})
 precompile(Tuple{typeof(Base.__cat_offset!), SparseArrays.SparseVector{Float64, Int64}, Tuple{Int64}, Tuple{Bool}, Tuple{Int64}, Float64, SparseArrays.SparseVector{Float64, Int64}})
 precompile(Tuple{typeof(SparseArrays.blockdiag), SparseArrays.SparseMatrixCSC{Float64, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
-precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
+#precompile(Tuple{Base.Threads.var"#1#2"{PMPC.var"#427#threadsfor_fun#76"{PMPC.var"#427#threadsfor_fun#73#77"{Int64, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Array{SparseArrays.SparseMatrixCSC{Float64, Int64}, 1}, Int64, Int64, Int64, Int64, Int64, Base.UnitRange{Int64}}}, Int64}})
 precompile(Tuple{typeof(Base.promote_eltype), SparseArrays.SparseMatrixCSC{Float64, Int64}, SparseArrays.SparseMatrixCSC{Float64, Int64}, Vararg{SparseArrays.SparseMatrixCSC{Float64, Int64}}})
 precompile(Tuple{typeof(SparseArrays.promote_idxtype), SparseArrays.SparseMatrixCSC{Float64, Int64}, SparseArrays.SparseMatrixCSC{Float64, Int64}, Vararg{SparseArrays.SparseMatrixCSC{Float64, Int64}}})
 precompile(Tuple{typeof(PMPC.lcone_repr_Ab), Array{PMPC.OCProb{Float64}, 1}, Int64})
@@ -1480,6 +1480,22 @@ precompile(Tuple{typeof(OSQP.clean!), OSQP.Model})
 precompile(Tuple{Type{NamedTuple{(:exception,), T} where T<:Tuple}, Tuple{Tuple{Base.EOFError, Array{Union{Ptr{Nothing}, Base.InterpreterIP}, 1}}}})
 precompile(Tuple{typeof(Core.kwcall), NamedTuple{(:exception,), Tuple{Tuple{Base.EOFError, Array{Union{Ptr{Nothing}, Base.InterpreterIP}, 1}}}}, typeof(Base.invokelatest), Any, Any, Vararg{Any}})
 precompile(Tuple{Base.var"##invokelatest#2", Base.Pairs{Symbol, Tuple{Base.EOFError, Array{Union{Ptr{Nothing}, Base.InterpreterIP}, 1}}, Tuple{Symbol}, NamedTuple{(:exception,), Tuple{Tuple{Base.EOFError, Array{Union{Ptr{Nothing}, Base.InterpreterIP}, 1}}}}}, typeof(Base.invokelatest), Any, Any, Vararg{Any}})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
