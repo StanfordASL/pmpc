@@ -6,6 +6,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 from setuptools.command.install import install
 from setuptools.command.develop import develop
+from subprocess import check_call
 
 
 sys.path.insert(0, str(Path(__file__).absolute().parent / "PMPC.jl" / "scripts"))
@@ -68,6 +69,8 @@ class PostInstallCommand(install):
 
 
 # perform setup ##############################################
+# install dependencies for setup to be able to run at all
+check_call([sys.executable, "-m", "pip", "install", "-r", Path(__file__).parent / "requirements.txt"])
 setup(
     name="pmpc",
     version="0.6.0",
