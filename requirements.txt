@@ -1,0 +1,8 @@
+numpy
+julia
+zstandard
+pyzmq
+cloudpickle
+redis
+tqdm
+psutil
