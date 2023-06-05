@@ -69,6 +69,11 @@ jl.fix_tracefile("{str(trace_path)}")
 """
     check_call([sys.executable, "-c", python_prog])
 
+    julia_prog = f"""
+include("{str(compilation_utils_path)}")
+fix_tracefile("{str(trace_path)}")
+"""
+    check_call([julia_runtime, "-e", julia_prog])
     # copy the now fixed precompile file #######################################
     shutil.copy(
         pmpc_path / "src" / "traces" / f"trace_{version}.jl", pmpc_path / "src" / "precompile.jl"
