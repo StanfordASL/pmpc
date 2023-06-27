@@ -12,6 +12,8 @@ compilation_utils_path = Path(pmpc_path) / "scripts" / "compilation_utils.jl"
 
 PathT = Union[Path, str]
 
+DISABLE_PRECOMPILATION = True
+
 ####################################################################################################
 
 
@@ -47,7 +49,8 @@ def install_package_julia_version(julia_runtime: Optional[PathT] = None) -> None
         os.remove(precompile_file)
 
     # run Julia within Python to fix the precompile file #######################
-    python_prog = f"""
+    if DISABLE_PRECOMPILATION:
+        python_prog = f"""
 import julia
 julia.install()
 from julia import Julia
@@ -66,18 +69,18 @@ jl.eval('Pkg.instantiate()')
 jl.eval('Pkg.resolve()')
 jl.include("{str(compilation_utils_path)}")
 jl.fix_tracefile("{str(trace_path)}")
-"""
-    check_call([sys.executable, "-c", python_prog])
+    """
+        check_call([sys.executable, "-c", python_prog])
 
-    julia_prog = f"""
+        julia_prog = f"""
 include("{str(compilation_utils_path)}")
 fix_tracefile("{str(trace_path)}")
-"""
-    check_call([julia_runtime, "-e", julia_prog])
-    # copy the now fixed precompile file #######################################
-    shutil.copy(
-        pmpc_path / "src" / "traces" / f"trace_{version}.jl", pmpc_path / "src" / "precompile.jl"
-    )
+    """
+        check_call([julia_runtime, "-e", julia_prog])
+        # copy the now fixed precompile file #######################################
+        shutil.copy(
+            pmpc_path / "src" / "traces" / f"trace_{version}.jl", pmpc_path / "src" / "precompile.jl"
+        )
     shutil.copy(pmpc_path / "versions" / f"Manifest.toml_{version}", pmpc_path / "Manifest.toml")
     shutil.copy(pmpc_path / "versions" / f"Project.toml_{version}", pmpc_path / "Project.toml")
 
@@ -153,7 +156,7 @@ def make_sysimage(julia_runtime:Optional[PathT]=None):
         return
 
     sysimage_path.parent.mkdir(parents=True, exist_ok=True)
-    if is_python_statically_linked():
+    if DISABLE_PRECOMPILATION or is_python_statically_linked():
         check_call([sys.executable, "-m", "julia.sysimage", "pmpc_sysimage.so"])
     else:
         trace_path = pmpc_path / "src" / "traces" / f"trace_{version}.jl"
