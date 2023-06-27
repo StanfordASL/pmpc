@@ -49,7 +49,7 @@ def install_package_julia_version(julia_runtime: Optional[PathT] = None) -> None
         os.remove(precompile_file)
 
     # run Julia within Python to fix the precompile file #######################
-    if DISABLE_PRECOMPILATION:
+    if not DISABLE_PRECOMPILATION:
         python_prog = f"""
 import julia
 julia.install()
