@@ -371,7 +371,8 @@ function lqp_repr_Gla(probs::AA{OCProb{T}, 1}, Nc::Integer) where {T}
       for j in 1:N
         for r in 1:xdim
           k += 1
-          Gi[k] = udim * (Nc + M * Nf) + N * xdim * (i - 1) + xdim * (j - 1) + r
+          Gi[k] = N * xdim * (i - 1) + xdim * (j - 1) + r
+          Gi[k] += probs[1].lu != nothing && probs[1].uu != nothing ? udim * (Nc + M * Nf) : 0
           Gx[k] = 1.0
           l[k] = probs[i].lx[xdim * (j - 1) + r]
           u[k] = probs[i].ux[xdim * (j - 1) + r]

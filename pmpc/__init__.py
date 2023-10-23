@@ -1,4 +1,5 @@
-from .scp_mpc import * # noqa: F403
+from .scp_mpc import *  # noqa: F403
+from .import_pmpcjl import import_pmpcjl
 
 """Keyword-compatible arguments in the solver scp solve call."""
 SOLVE_KWS = {
@@ -29,4 +30,4 @@ SOLVE_KWS = {
     "filter_it0",
 }
 
-from .problem_struct import Problem # noqa: F401
+from .problem_struct import Problem  # noqa: F401

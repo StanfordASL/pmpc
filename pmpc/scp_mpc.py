@@ -1,13 +1,17 @@
 ##^# library imports ###########################################################
+from __future__ import annotations
+
 import math
 import time
 from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from multiprocessing import Pool
 
 import numpy as np
 
 from . import julia_utils as ju
-from .utils import TablePrinter
+from .utils import TablePrinter, atleast_nd, to_numpy_f64
+from .static_backend import aff_solve as static_aff_solve, is_precompiled_backend_available
 
 jl = None
 JULIA_SOLVE_FNS = dict()  # attribute look up is expensive (~ 2 ms every time)
@@ -57,24 +61,6 @@ FILTER_MAP = dict(smooth=smooth_method, select=select_method, AA=AA_method)
 
 
 # affine solve using julia #########################################################################
-def atleast_nd(x: Optional[np.ndarray], n: int):
-    if x is None:
-        return None
-    else:
-        return x.reshape((1,) * max(n - x.ndim, 0) + x.shape)
-
-
-def to_numpy_f64(x):
-    if isinstance(x, np.ndarray) and x.dtype == np.float64:
-        return x
-    elif isinstance(x, np.ndarray):
-        return x.astype(np.float64)
-    elif isinstance(x, (float, int)):
-        return x
-    else:
-        return np.array(x, dtype=np.float64)
-
-
 def lqp_generate_problem_matrices(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref):
     ensure_julia()
     x0 = atleast_nd(x0, 2)
@@ -108,6 +94,30 @@ def aff_solve(
     u_u: np.ndarray,
     solver_settings: Optional[Dict[str, Any]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Any]:
+    if is_precompiled_backend_available():
+        return static_aff_solve(
+            f,
+            fx,
+            fu,
+            x0,
+            X_prev,
+            U_prev,
+            Q,
+            R,
+            X_ref,
+            U_ref,
+            reg_x,
+            reg_u,
+            slew_rate,
+            u_slew,
+            x_l,
+            x_u,
+            u_l,
+            u_u,
+            solver_settings,
+        )
+    assert False
+
     """Solve a single instance of a linearized MPC problem."""
     ensure_julia()
     f = atleast_nd(f, 3)
@@ -430,6 +440,7 @@ def scp_solve(
 def solve(*args, **kwargs):
     if kwargs.get("profile", False):
         from line_profiler import LineProfiler
+
         LP = LineProfiler()
         LP.add_function(scp_solve)
         ret = LP.wrap_function(scp_solve)(*args, **kwargs)
@@ -437,7 +448,6 @@ def solve(*args, **kwargs):
     else:
         ret = scp_solve(*args, **kwargs)
     return ret
-
 
 
 # tuning hyperparameters ###########################################################################
@@ -481,4 +491,15 @@ def tune_scp(
     return reg_x, reg_u
 
 
-# custom root function #############################################################################
+def solve_with_a_dict(problem: dict[str, Any]) -> tuple:
+    return solve(**problem)
+
+
+def solve_problems(
+    problems: List[Dict[str, Any]],
+    verbose: bool = False,
+    **kw,  # kwargs to ignore
+) -> List[Tuple[np.ndarray, np.ndarray, Dict[str, Any]]]:
+    # with Pool(8) as pool:
+    #    return pool.map(solve_with_a_dict, [dict(p, verbose=verbose) for p in problems])
+    return [solve(**dict(p, verbose=verbose)) for p in problems]

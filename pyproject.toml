@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools", "pybind11"]
+#build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length=100
+
+[tool.cibuildwheel]
+before-all = "curl -fsSL https://install.julialang.org | sh -s -- --yes && ln -s /root/.juliaup/bin/julia /bin/julia"
+#before-build = "julia -e 'using InteractiveUtils; versioninfo()' && rm -rf PMPC.jl/build/* && julia PMPC.jl/scripts/build_pmpc_lib.jl && julia -e 'println(VERSION)'"
+build-verbosity=3

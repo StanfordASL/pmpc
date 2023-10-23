@@ -14,11 +14,11 @@ export lqp_solve, lcone_solve, lqp_generate_problem_matrices
 export rollout, dynamics_violation, make_prob, make_probs
 export PMPCs_ctrl, MPCs_ctrl
 
-using LinearAlgebra, SparseArrays, Printf, Base.Threads, SuiteSparse, Suppressor
+using LinearAlgebra, SparseArrays, Printf, Base.Threads
 using OSQP
 using REPL
-using JuMP, MathOptInterface, ECOS
-using MosekTools, COSMO
+using JuMP, MathOptInterface, ECOS, COSMO
+#using MosekTools
 const MOI = MathOptInterface
 using Infiltrator
 
@@ -31,8 +31,12 @@ include("cone.jl")
 include("main.jl")
 include("memory_utils.jl")
 
-if isfile(joinpath(@__DIR__, "precompile.jl"))
-  include("precompile.jl")
-end
+#if isfile(joinpath(@__DIR__, "precompile.jl"))
+#  include("precompile.jl")
+#end
+
+include("c_interface.jl")
+
+export c_lqp_solve, c_lcone_solve
 
 end # module

@@ -19,15 +19,20 @@ def get_julia_version(julia_runtime=None):
     assert m is not None
     return m.group(1)
 
-
-JULIA_VERSION = get_julia_version()
-PYTHON_VERSION = ".".join(map(str, sys.version_info[:3]))
-SYSIMAGE_PATH = Path("~").expanduser() / ".cache" / "pmpc" / f"pmpc_sysimage_j{JULIA_VERSION}_p{PYTHON_VERSION}.so"
+JULIA_VERSION = None
+PYTHON_VERSION = None
+SYSIMAGE_PATH = None
 
 
 ################################################################################
 #### loading julia and including the library source files in julia #############
 def load_julia(verbose=False, **kw):
+    global JULIA_VERSION, PYTHON_VERSION, SYSIMAGE_PATH
+    if JULIA_VERSION is None:
+        JULIA_VERSION = get_julia_version()
+        PYTHON_VERSION = ".".join(map(str, sys.version_info[:3]))
+        SYSIMAGE_PATH = Path("~").expanduser() / ".cache" / "pmpc" / f"pmpc_sysimage_j{JULIA_VERSION}_p{PYTHON_VERSION}.so"
+
     t = time.time()
     try:
         import julia

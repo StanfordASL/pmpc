@@ -154,7 +154,8 @@ function JuMP_solve(problem::ConeProblem; settings...)
     model = JuMP.Model(optimizer_with_attributes(() -> ECOS.Optimizer(), settings...))
   else
     verbose = get(settings, :verbose, false)
-    model = JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !verbose))
+    @assert false, "Mosek not supported"
+    #model = JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !verbose))
   end
   z = @variable(model, z[1:length(problem.c)])
   cstr = []

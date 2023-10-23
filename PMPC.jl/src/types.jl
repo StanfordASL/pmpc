@@ -1,4 +1,4 @@
-using LinearAlgebra, SparseArrays, Suppressor
+using LinearAlgebra, SparseArrays
 const AA = AbstractArray
 const SpMat = SparseMatrixCSC
 
@@ -9,15 +9,19 @@ function catb(x_list...)
   ret = reshape(X, (size(x_list[1])..., length(x_list)))
   return ret
 end
+
 get_types(::Type{Dict{TK, TV}}) where {TK, TV} = (TK, TV)
+
 import Base.convert
-function convert(::Type{Dict{Symbol, Any}}, d::Dict)
+
+function Base.convert(::Type{Dict{Symbol, Any}}, d::Dict)
   if get_types(typeof(d))[1] <: Symbol
     return d
   else
     return Dict{Symbol, Any}(Symbol(p.first) => p.second for p in d)
   end
 end
+
 macro ptime(f, n=1, prepend_text="")
   return quote
     for i_ in 1:($n)
@@ -28,6 +32,7 @@ macro ptime(f, n=1, prepend_text="")
     val
   end
 end
+
 function efficient_vcat(mats::AA{SparseMatrixCSC{T1, T2}, 1}) where {T1, T2}
   n = length(mats)
   @assert length(mats) >= 0
@@ -86,8 +91,11 @@ mutable struct OCProb{T}
   xdim::Int
   udim::Int
 end
+
 OCProb() = OCProb{Float64}(repeat([nothing], 14)..., 0.0, 0.0, 0.0, nothing, 0.0, 0, 0, 0)
+
 OCProb{T}() where {T} = OCProb{T}(repeat([nothing], 14)..., 0.0, 0.0, 0.0, nothing, 0.0, 0, 0, 0)
+
 function set_cost!(
   prob::OCProb{T},
   Q::AA{T, 3},
@@ -100,6 +108,7 @@ function set_cost!(
   prob.slew_um1 = prob.slew_um1 != nothing ? prob.slew_um1 : zeros(T, prob.udim)
   return
 end
+
 function set_dyn!(
   prob::OCProb{T},
   x0::AA{T, 1},
@@ -115,6 +124,7 @@ function set_dyn!(
   prob.slew_um1 = prob.slew_um1 != nothing ? prob.slew_um1 : zeros(T, prob.udim)
   return
 end
+
 function set_xbounds!(prob::OCProb{T}, lx::AA{T, 2}, ux::AA{T, 2}) where {T}
   prob.lx, prob.ux = lx, ux
   @assert prob.xdim == nothing || prob.xdim == size(lx, 1) == size(ux, 1)
@@ -122,6 +132,7 @@ function set_xbounds!(prob::OCProb{T}, lx::AA{T, 2}, ux::AA{T, 2}) where {T}
   prob.N, prob.xdim = size(lx, 2), size(lx, 1)
   return
 end
+
 function set_ubounds!(prob::OCProb{T}, lu::AA{T, 2}, uu::AA{T, 2}) where {T}
   prob.lu, prob.uu = lu, uu
   @assert prob.udim == nothing || prob.udim == size(lu, 1) == size(uu, 1)
@@ -130,6 +141,7 @@ function set_ubounds!(prob::OCProb{T}, lu::AA{T, 2}, uu::AA{T, 2}) where {T}
   prob.slew_um1 = prob.slew_um1 != nothing ? prob.slew_um1 : zeros(T, prob.udim)
   return
 end
+
 function set_ctrl_slew!(
   prob::OCProb{T};
   slew_reg=nothing,
@@ -140,11 +152,13 @@ function set_ctrl_slew!(
   prob.slew_reg0 = slew_reg0 != nothing ? slew_reg0 : prob.slew_reg0
   prob.slew_um1 = slew_um1 != nothing ? slew_um1 : prob.slew_um1
 end
+
 function objective(prob::OCProb{T}, X::AA{T, 2}, U::AA{T, 2}) where {T}
   P, q, _ = qp_repr_Pq(prob)
   z = vcat(reshape(U, :), reshape(X, :))
   return z' * (P * z) + q' * z
 end
+
 function rollout!(prob::OCProb{T}, X::AA{T, 2}, U::AA{T, 2}) where {T}
   @views begin
     X[:, 1] = prob.f[:, 1] + prob.fu[:, :, 1] * (U[:, 1] - prob.U_prev[:, 1])
@@ -158,11 +172,13 @@ function rollout!(prob::OCProb{T}, X::AA{T, 2}, U::AA{T, 2}) where {T}
   end
   return
 end
+
 function rollout(prob::OCProb{T}, U::AA{T, 2}) where {T}
   X = zeros(T, prob.xdim, prob.N)
   rollout!(prob, X, U)
   return X
 end
+
 function rollout!(prob::OCProb{T}, X::AA{T, 2}, U::AA{T, 2}, L::AA{T, 3}, l::AA{T, 2}) where {T}
   @views begin
     U[:, 1] = l[:, 1] + L[:, :, 1] * prob.x0
@@ -178,11 +194,13 @@ function rollout!(prob::OCProb{T}, X::AA{T, 2}, U::AA{T, 2}, L::AA{T, 3}, l::AA{
   end
   return
 end
+
 function rollout(prob::OCProb{T}, L::AA{T, 3}, l::AA{T, 2}) where {T}
   X, U = zeros(T, prob.xdim, prob.N), zeros(T, prob.udim, prob.N)
   rollout!(prob, X, U, L, l)
   return X, U
 end
+
 function shorten_horizon(N::Integer, xs::AA{T}...) where {T}
   n = length(xs)
   ret = Array{AA{T}, 1}(undef, n)

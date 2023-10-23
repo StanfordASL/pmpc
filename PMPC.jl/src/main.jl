@@ -124,6 +124,9 @@ function lqp_solve(
   M = length(probs)
   xdim, udim, N = probs[1].xdim, probs[1].udim, probs[1].N
   coerce = get(settings, :coerce, false)
+  solver_settings =
+    Dict{Symbol, Any}(Symbol(p.first) => p.second for p in get(settings, :solver_settings, Dict()))
+  get!(solver_settings, :verbose, false)
 
   # read in the consensus horizon
   Nc = get(settings, :Nc, N)
@@ -136,6 +139,7 @@ function lqp_solve(
   P, q = lqp_repr_Pq(probs, Nc)
   A, b = lqp_repr_Ab(probs, Nc)
   G, l, u = lqp_repr_Gla(probs, Nc)
+
   # set default solver
   haskey(settings, :smooth_alpha) && (get!(settings, :smooth_cstr, "logbarrier"))
   if !haskey(settings, :solver)
@@ -150,7 +154,7 @@ function lqp_solve(
   solver.G, solver.l, solver.u = G, l, u
 
   # problem solving solving ###################################
-  z, _ = solve_qp!(solver; settings...)
+  z, _ = solve_qp!(solver; solver_settings...)
   X, U = split_lqp_vars(probs, Nc, z)
   @views if coerce
     println("Coercing")

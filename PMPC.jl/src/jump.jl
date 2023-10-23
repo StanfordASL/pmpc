@@ -44,7 +44,8 @@ function setup!(solver::JuMPSolver{T}; solver_settings...)::Bool where {T}
   get!(solver_settings, :verbose, false)
   get!(solver_settings, :smooth_cstr, "")
   get!(solver_settings, :smooth_alpha, 1e0)
-  get!(solver_settings, :solver_name, "Mosek")
+  #get!(solver_settings, :solver_name, "Mosek")
+  get!(solver_settings, :solver_name, "ECOS")
 
   solver.z_sol = get(solver_settings, :z_sol, nothing)
   solver.tu_sol = get(solver_settings, :tu_sol, nothing)
@@ -52,8 +53,9 @@ function setup!(solver::JuMPSolver{T}; solver_settings...)::Bool where {T}
 
   # select the solver
   if lowercase(solver_settings[:solver_name]) == "mosek"
-    solver.model =
-      JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !solver_settings[:verbose]))
+    @assert false, "Mosek not supported"
+    #solver.model =
+    #  JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !solver_settings[:verbose]))
   elseif lowercase(solver_settings[:solver_name]) == "ecos"
     solver.model = JuMP.Model(ECOS.Optimizer)
     set_optimizer_attribute(solver.model, "verbose", solver_settings[:verbose])

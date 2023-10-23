@@ -216,7 +216,8 @@ function qp_repr_Ab(prob::OCProb{T}) where {T}
       b[sidx + r] = val
     end
   end
-  A = SparseMatrixCSC{T, Int}(N * xdim, N * (xdim + udim), Ap, Ai, Ax)
+  #A = SparseMatrixCSC{T, Int}(N * xdim, N * (xdim + udim), Ap, Ai, Ax)
+  A = SparseMatrixCSC{T, Int}(N * xdim, N * (xdim + udim), Ap, Ai[1:Ap[end-1]], Ax[1:Ap[end-1]])
   return A, b
 end
 
