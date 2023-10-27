@@ -1,12 +1,9 @@
+# install the libraries required for this build script #############################################
 using Pkg, InteractiveUtils
-try
-  using PackageCompiler
-catch
-  Pkg.add("PackageCompiler")
-end
+Pkg.add("PackageCompiler")
 using PackageCompiler
 
-# install and resolve the PMPC package to the current Julia version ############
+# remove existing package name resolution ##########################################################
 PMPC_path = joinpath(@__DIR__, "..")
 PMPC_pkg = Pkg.PackageSpec(path=PMPC_path)
 manifest_path = joinpath(PMPC_path, "Manifest.toml") # handle any Julia version
@@ -14,27 +11,42 @@ try
   rm(manifest_path)
 catch e
 end
+
+# fix and install the PMPC development dependencies ################################################
+third_party_path = joinpath(@__DIR__, "..", "..", "third_party")
+#println("Running fixes for Mosek_jll")
+#include(joinpath(@__DIR__, "..", "..", "third_party", "Mosek_jll", "deps", "build.jl"))
+#Pkg.develop(PackageSpec(path=joinpath(third_party_path, "Mosek_jll")))
+#Pkg.develop(PackageSpec(path=joinpath(third_party_path, "Mosek.jl")))
+
+# install the PMPC package #########################################################################
+#Pkg.activate(joinpath(third_party_path, "Mosek.jl"))
+#Pkg.develop(Pkg.PackageSpec(url="https://github.com/rdyro/Mosek_jll.jl"))
+#Pkg.resolve()
 Pkg.activate(PMPC_path)
+#Pkg.develop(PackageSpec(path=joinpath(third_party_path, "Mosek_jll")))
+Pkg.develop(Pkg.PackageSpec(path=joinpath(third_party_path, "Mosek.jl")))
 Pkg.resolve()
+Pkg.instantiate()
+Pkg.precompile()
 Pkg.activate()
 Pkg.develop(PMPC_pkg)
 
+# potentially updatedb to find extra dynamic libraries #############################################
+try
+  run(`updatedb`)
+catch e
+end
 
-# potentially build the library ################################################
+# potentially build the library ####################################################################
 pmpc_lib_path = joinpath(@__DIR__, "..", "build", "pmpc_lib_$(VERSION)")
 pmpcjl_path = joinpath(@__DIR__, "..", "pmpcjl")
-
-
 if !isdir(pmpc_lib_path)
   if !isdir(joinpath(PMPC_path, "build"))
     mkdir(joinpath(PMPC_path, "build"))
   end
   println(repeat("#", 80))
-  println(repeat("#", 80))
-  println(repeat("#", 80))
   println("We need to build the PMPC library, this will take about 10 mins!")
-  println(repeat("#", 80))
-  println(repeat("#", 80))
   println(repeat("#", 80))
   create_library(
     joinpath(@__DIR__, ".."),
@@ -44,15 +56,26 @@ if !isdir(pmpc_lib_path)
     #filter_stdlibs=true,
     incremental=false,
   )
-  for extra_lib in ["libsuitesparse_wrapper"]
-    locations = [x for x in split(read(`locate $extra_lib`, String), "\n") if length(x) > 0]
-    if length(locations) == 0
-      error("Could not find $extra_lib")
+end
+
+# vendor in extra libraries ########################################################################
+extra_libs = ["libsuitesparse_wrapper"]
+for extra_lib in extra_libs
+  locations = [x for x in split(read(`locate $extra_lib`, String), "\n") if length(x) > 0]
+  locations = [x for x in locations if match(Regex("$extra_lib\\..*"), x) != nothing]
+  if length(locations) == 0
+    error("Could not find $extra_lib")
+  end
+  for location in locations
+    println("Copying $location")
+    try
+      cp(location, joinpath(pmpc_lib_path, "lib", "julia", splitpath(location)[end]), force=true)
+    catch e
     end
-    cp(locations[1], joinpath(pmpc_lib_path, "lib", "julia", splitpath(locations[1])[end]), force=true)
   end
 end
 
+# copy the library to the PMPC.jl package ##########################################################
 libfiles = [f for f in readdir(joinpath(pmpc_lib_path, "lib"), join=true)]
 include_path = joinpath(pmpc_lib_path, "include")
 lib_path = joinpath(pmpc_lib_path, "lib")

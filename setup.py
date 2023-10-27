@@ -2,8 +2,6 @@
 
 import os
 import sys
-import traceback
-from copy import deepcopy
 from pathlib import Path
 from subprocess import check_call
 
@@ -21,7 +19,7 @@ from setuptools.command.install import install
 def _install_common(kw):
     setup(
         name="pmpc",
-        version="0.6.0",
+        version="0.7.0",
         packages=find_packages(),
         install_requires=[
             "numpy",
@@ -46,7 +44,11 @@ def _install_common(kw):
 
 def install_dynamic():
     sys.path.insert(0, str(Path(__file__).absolute().parent / "PMPC.jl" / "scripts"))
-    from tools import get_julia_version, install_package_julia_version, make_sysimage
+    from tools import (
+        get_julia_version,
+        install_package_julia_version,
+        make_sysimage,
+    )
 
     # custom julia installation script for the PMPC module #######
     def install_julia_package():
@@ -77,13 +79,14 @@ def install_dynamic():
                 pass
 
         print("Installing the PMPC package...")
-        try:
-            print(f"Julia version = {get_julia_version()}")
-            install_package_julia_version()
-            # make_sysimage()
-        except Exception as e:
-            print(e)
-            pass
+        install_package_julia_version()
+        #try:
+        #    print(f"Julia version = {get_julia_version()}")
+        #    install_package_julia_version()
+        #    # make_sysimage()
+        #except Exception as e:
+        #    print(e)
+        #    pass
 
     # taken from https://stackoverflow.com/questions/20288711/post-install-script-with-python-setuptools
     class PostDevelopCommand(develop):
@@ -159,17 +162,5 @@ def install_static():
 
 
 if __name__ == "__main__":
-    # try:
-    #    install_dynamic()
-    #    dynamic_success = True
-    # except Exception as e:
-    #    traceback.print_exc()
-    #    dynamic_success = False
-    dynamic_success = False
-    try:
-       install_static()
-       static_success = True
-    except Exception as e:
-       traceback.print_exc()
-       static_success = False
-    assert dynamic_success or static_success, "Neither dynamic nor static install succeeded"
+    #install_dynamic()
+    install_static()

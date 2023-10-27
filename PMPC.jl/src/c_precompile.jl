@@ -48,92 +48,103 @@ function precompile_c_interface()
   slew_reg0 = 0.0 * ones(M)
   slew_um1 = zeros(udim, M)
 
-  smooth_alpha = 1e0
-
   X_out, U_out = zeros(xdim, N, M), zeros(udim, N, M)
 
-  for verbose in [0, 1]
-    for u_cstr_present in [false, true]
-      for x_cstr_present in [false, true]
-        for slew0_present in [false, true]
-          for slew_present in [false, true]
-            println(
-              "\nverbose = $(verbose) u_cstr = $(u_cstr_present) x_cstr = $(x_cstr_present) " *
-              "slew0 = $(slew0_present) slew = $(slew_present)\n",
-            )
-            flush(stdout)
+  redirect_stdout(devnull) do
+    for verbose in [0, 1]
+      for u_cstr_present in [false, true]
+        for x_cstr_present in [false, true]
+          for slew0_present in [false, true]
+            for slew_present in [false, true]
+              for smooth_alpha in [NaN, 1e0]
+                println(
+                  "\nverbose = $(verbose) u_cstr = $(u_cstr_present) x_cstr = $(x_cstr_present) " *
+                  "slew0 = $(slew0_present) slew = $(slew_present)\n",
+                )
+                flush(stdout)
 
-            c_lqp_solve(
-              pointer(X_out),
-              pointer(U_out),
-              Csize_t(xdim),
-              Csize_t(udim),
-              Csize_t(N),
-              Csize_t(M),
-              Clonglong(Nc),
-              pointer(x0),
-              pointer(f),
-              pointer(fx),
-              pointer(fu),
-              pointer(X_prev),
-              pointer(X_prev),
-              pointer(Q),
-              pointer(R),
-              pointer(X_ref),
-              pointer(U_ref),
-              pointer(x_cstr_present ? lx : NaN * lx),
-              pointer(x_cstr_present ? ux : NaN * ux),
-              pointer(u_cstr_present ? lu : NaN * lu),
-              pointer(u_cstr_present ? uu : NaN * uu),
-              Cdouble(reg_x),
-              Cdouble(reg_u),
-              pointer(slew_present ? slew_reg : NaN * slew_reg),
-              pointer(slew0_present ? slew_reg0 : NaN * slew_reg0),
-              pointer(slew0_present ? slew_um1 : NaN * slew_um1),
-              Clonglong(verbose),
-            )
+                c_lqp_solve(
+                  pointer(X_out),
+                  pointer(U_out),
+                  Csize_t(xdim),
+                  Csize_t(udim),
+                  Csize_t(N),
+                  Csize_t(M),
+                  Clonglong(Nc),
+                  pointer(x0),
+                  pointer(f),
+                  pointer(fx),
+                  pointer(fu),
+                  pointer(X_prev),
+                  pointer(X_prev),
+                  pointer(Q),
+                  pointer(R),
+                  pointer(X_ref),
+                  pointer(U_ref),
+                  pointer(x_cstr_present ? lx : NaN * lx),
+                  pointer(x_cstr_present ? ux : NaN * ux),
+                  pointer(u_cstr_present ? lu : NaN * lu),
+                  pointer(u_cstr_present ? uu : NaN * uu),
+                  Cdouble(reg_x),
+                  Cdouble(reg_u),
+                  pointer(slew_present ? slew_reg : NaN * slew_reg),
+                  pointer(slew0_present ? slew_reg0 : NaN * slew_reg0),
+                  pointer(slew0_present ? slew_um1 : NaN * slew_um1),
+                  Clonglong(verbose),
+                )
 
-            display(X_out[:, :, 1])
-            display(U_out[:, :, 1])
+                println(X_out[:, :, 1])
+                println(U_out[:, :, 1])
 
-            c_lcone_solve(
-              pointer(X_out),
-              pointer(U_out),
-              Csize_t(xdim),
-              Csize_t(udim),
-              Csize_t(N),
-              Csize_t(M),
-              Clonglong(Nc),
-              pointer(x0),
-              pointer(f),
-              pointer(fx),
-              pointer(fu),
-              pointer(X_prev),
-              pointer(X_prev),
-              pointer(Q),
-              pointer(R),
-              pointer(X_ref),
-              pointer(U_ref),
-              pointer(x_cstr_present ? lx : NaN * lx),
-              pointer(x_cstr_present ? ux : NaN * ux),
-              pointer(u_cstr_present ? lu : NaN * lu),
-              pointer(u_cstr_present ? uu : NaN * uu),
-              Cdouble(reg_x),
-              Cdouble(reg_u),
-              pointer(slew_present ? slew_reg : NaN * slew_reg),
-              pointer(slew0_present ? slew_reg0 : NaN * slew_reg0),
-              pointer(slew0_present ? slew_um1 : NaN * slew_um1),
-              Clonglong(verbose),
-              Cdouble(smooth_alpha),
-            )
+                for solver in ["ecos", "mosek", "cosmo"]
+                  try
+                    c_lcone_solve(
+                      pointer(X_out),
+                      pointer(U_out),
+                      Csize_t(xdim),
+                      Csize_t(udim),
+                      Csize_t(N),
+                      Csize_t(M),
+                      Clonglong(Nc),
+                      pointer(x0),
+                      pointer(f),
+                      pointer(fx),
+                      pointer(fu),
+                      pointer(X_prev),
+                      pointer(X_prev),
+                      pointer(Q),
+                      pointer(R),
+                      pointer(X_ref),
+                      pointer(U_ref),
+                      pointer(x_cstr_present ? lx : NaN * lx),
+                      pointer(x_cstr_present ? ux : NaN * ux),
+                      pointer(u_cstr_present ? lu : NaN * lu),
+                      pointer(u_cstr_present ? uu : NaN * uu),
+                      Cdouble(reg_x),
+                      Cdouble(reg_u),
+                      pointer(slew_present ? slew_reg : NaN * slew_reg),
+                      pointer(slew0_present ? slew_reg0 : NaN * slew_reg0),
+                      pointer(slew0_present ? slew_um1 : NaN * slew_um1),
+                      Clonglong(verbose),
+                      Cdouble(smooth_alpha),
+                      Cstring(pointer(solver)),
+                    )
+                  catch e
+                  end
 
-            display(X_out[:, :, 1])
-            display(U_out[:, :, 1])
+                  println(X_out[:, :, 1])
+                  println(U_out[:, :, 1])
+                end
+              end
+            end
           end
         end
       end
     end
+    flush(stdout)
   end
+
+  return nothing
 end
 
 precompile_c_interface()

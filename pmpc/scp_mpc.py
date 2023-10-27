@@ -1,6 +1,7 @@
 ##^# library imports ###########################################################
 from __future__ import annotations
 
+import pdb
 import math
 import time
 from copy import copy
@@ -116,7 +117,6 @@ def aff_solve(
             u_u,
             solver_settings,
         )
-    assert False
 
     """Solve a single instance of a linearized MPC problem."""
     ensure_julia()

@@ -1,4 +1,6 @@
-FROM quay.io/pypa/manylinux_2_28_x86_64
+ARG ARCH
+
+FROM quay.io/pypa/manylinux_2_28_${ARCH}
 
 COPY . /project
 WORKDIR /project
@@ -14,6 +16,9 @@ RUN source ~/.bashrc
 RUN yes | yum install mlocate
 RUN updatedb
 
+RUN mkdir /root/mosek
+COPY ./mosek.lic /root/mosek/mosek.lic
+
 # create the julia binaries
 RUN rm -rf /project/PMPC.jl/build
 RUN ~/.juliaup/bin/julia /project/PMPC.jl/scripts/build_pmpc_lib.jl
@@ -21,4 +26,4 @@ RUN ~/.juliaup/bin/julia /project/PMPC.jl/scripts/build_pmpc_lib.jl
 WORKDIR /project
 
 #RUN /project/scripts/build_for_all.sh
-CMD ["/project/scripts/build_for_all.sh"]
+CMD ["sh", "/project/scripts/build_for_all.sh"]

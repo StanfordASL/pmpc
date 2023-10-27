@@ -18,24 +18,29 @@ using LinearAlgebra, SparseArrays, Printf, Base.Threads
 using OSQP
 using REPL
 using JuMP, MathOptInterface, ECOS, COSMO
-#using MosekTools
 const MOI = MathOptInterface
-using Infiltrator
+using Infiltrator, PrecompileTools
+using Gurobi
+using MosekTools # not currently supported
 
 include("types.jl")
-include("qp.jl")
-include("osqp.jl")
-include("jump.jl")
-include("lqp.jl")
-include("cone.jl")
-include("main.jl")
-include("memory_utils.jl")
 
-#if isfile(joinpath(@__DIR__, "precompile.jl"))
-#  include("precompile.jl")
-#end
+include("qp_utils.jl")
+include("lqp_utils.jl")
+include("osqp_solver.jl")
+
+include("cone_utils.jl")
+include("cone_solver.jl")
+
+#include("jump_solver.jl")
+#include("memory_utils.jl")
+
+include("main.jl")
 
 include("c_interface.jl")
+@compile_workload begin
+  include("c_precompile.jl")
+end
 
 export c_lqp_solve, c_lcone_solve
 

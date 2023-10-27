@@ -31,9 +31,10 @@ function augmented_A(solver::OSQPSolver{T}) where {T}
   return Aa, la, ua
 end
 
-function setup!(solver::OSQPSolver{T}; solver_settings...) where {T}
-  solver_settings = Dict{Symbol,Any}(solver_settings)
-  get!(solver_settings, :verbose, false)
+function setup!(solver::OSQPSolver{T}; settings...) where {T}
+  settings = Dict{Symbol,Any}(settings)
+  solver_settings = Dict{Symbol,Any}(get(settings, :solver_settings, []))
+  solver_settings[:verbose] = get(settings, :verbose, false)
   success = true
   if solver.model == nothing
     solver.model = OSQP.Model()

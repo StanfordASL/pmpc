@@ -42,14 +42,14 @@ def install_package_julia_version(julia_runtime: Optional[PathT] = None) -> None
     version = get_julia_version(julia_runtime)
 
     # copy the trace file ######################################################
-    trace_path = pmpc_path / "src" / "traces" / f"trace_{version}.jl"
-    shutil.copy(Path(__file__).absolute().parent / f"trace_{version}.jl", trace_path)
-    precompile_file = Path(__file__).absolute().parents[1] / "src" / "precompile.jl"
-    if precompile_file.exists():
-        os.remove(precompile_file)
 
     # run Julia within Python to fix the precompile file #######################
     if not DISABLE_PRECOMPILATION:
+        trace_path = pmpc_path / "src" / "traces" / f"trace_{version}.jl"
+        shutil.copy(Path(__file__).absolute().parent / f"trace_{version}.jl", trace_path)
+        precompile_file = Path(__file__).absolute().parents[1] / "src" / "precompile.jl"
+        if precompile_file.exists():
+            os.remove(precompile_file)
         python_prog = f"""
 import julia
 julia.install()
@@ -81,8 +81,8 @@ fix_tracefile("{str(trace_path)}")
         shutil.copy(
             pmpc_path / "src" / "traces" / f"trace_{version}.jl", pmpc_path / "src" / "precompile.jl"
         )
-    shutil.copy(pmpc_path / "versions" / f"Manifest.toml_{version}", pmpc_path / "Manifest.toml")
-    shutil.copy(pmpc_path / "versions" / f"Project.toml_{version}", pmpc_path / "Project.toml")
+        shutil.copy(pmpc_path / "versions" / f"Manifest.toml_{version}", pmpc_path / "Manifest.toml")
+        shutil.copy(pmpc_path / "versions" / f"Project.toml_{version}", pmpc_path / "Project.toml")
 
     # install the final package ################################################
     julia_prog = f"""

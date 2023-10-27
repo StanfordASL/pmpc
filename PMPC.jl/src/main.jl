@@ -124,9 +124,7 @@ function lqp_solve(
   M = length(probs)
   xdim, udim, N = probs[1].xdim, probs[1].udim, probs[1].N
   coerce = get(settings, :coerce, false)
-  solver_settings =
-    Dict{Symbol, Any}(Symbol(p.first) => p.second for p in get(settings, :solver_settings, Dict()))
-  get!(solver_settings, :verbose, false)
+  get!(settings, :verbose, false)
 
   # read in the consensus horizon
   Nc = get(settings, :Nc, N)
@@ -140,24 +138,21 @@ function lqp_solve(
   A, b = lqp_repr_Ab(probs, Nc)
   G, l, u = lqp_repr_Gla(probs, Nc)
 
+  @assert !in(:smooth_alpha, keys(settings)) && !in(:smooth_cst, keys(settings))
+
   # set default solver
-  haskey(settings, :smooth_alpha) && (get!(settings, :smooth_cstr, "logbarrier"))
-  if !haskey(settings, :solver)
-    settings[:solver] = length(get(settings, :smooth_cstr, "")) > 0 ? "ecos" : "osqp"
-  end
-  if lowercase(settings[:solver]) == "osqp"
-    solver = OSQPSolver()
-  else
-    solver = JuMPSolver()
-  end
+  #haskey(settings, :smooth_alpha) && (get!(settings, :smooth_cstr, "logbarrier"))
+  #if !haskey(settings, :solver)
+  #  settings[:solver] = length(get(settings, :smooth_cstr, "")) > 0 ? "jump" : "osqp"
+  #end
+  solver = OSQPSolver()
   solver.P, solver.q, solver.A, solver.b = P, q, A, b
   solver.G, solver.l, solver.u = G, l, u
 
   # problem solving solving ###################################
-  z, _ = solve_qp!(solver; solver_settings...)
+  z, _ = solve_qp!(solver; settings...)
   X, U = split_lqp_vars(probs, Nc, z)
   @views if coerce
-    println("Coercing")
     ubar = mean(U[:, 1:Nc, :]; dims=3)[:, :, 1]
     for i in 1:M
       U[:, 1:Nc, i] .= ubar
@@ -211,13 +206,12 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
   (weights != nothing) && (scale_probs_cost!(probs, weights))
   k = get(settings, :k, M)
   k = k >= 0 ? k : M
-  solver_settings =
-    Dict{Symbol, Any}(Symbol(p.first) => p.second for p in get(settings, :solver_settings, Dict()))
-  get!(solver_settings, :verbose, false)
-  verbose = get(settings, :verbose, false)
-  verbose && println("SOCP_k = ", k)
 
+  get!(settings, :verbose, false)
   get!(settings, :solver, "ecos")
+
+  #verbose = get(settings, :verbose, false)
+  #verbose && println("SOCP_k = ", k)
 
   begin
     # generate the matrices
@@ -248,6 +242,9 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
   end
 
   # handle constraints
+  if isnan(get(settings, :smooth_alpha, NaN)) # indicate smoothing was NOT requested
+    settings[:smooth_cstr] = ""
+  end
   haskey(settings, :smooth_alpha) && (get!(settings, :smooth_cstr, "logbarrier"))
   get!(settings, :smooth_cstr, "")
   get!(settings, :smooth_alpha, 1e0)
@@ -311,7 +308,7 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
         G_left, G_right = vcat(G_left[l+1:end, :], G_left_new), G_right_new
         h = vcat(h[l+1:end], h_new)
         l, e = 0, e + div(size(G_left_new, 1), 3)
-        c_right = ones(size(G_right, 2))
+        c_right = ones(siGurobize(G_right, 2))
       end
       augment_cone_problem!(
         cone_problem;
@@ -321,14 +318,16 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
   end
 
   # solve
-  @assert lowercase(settings[:solver]) in ["ecos", "cosmo", "jump", "mosek"]
-  if false && lowercase(settings[:solver]) == "ecos"
-    error("Currently broken.")
-    sol = ECOS_solve(cone_problem; solver_settings...)
-  elseif lowercase(settings[:solver]) == "cosmo"
-    sol = COSMO_solve(cone_problem; solver_settings...)
-  elseif lowercase(settings[:solver]) in ["jump", "mosek", "ecos"]
-    sol = JuMP_solve(cone_problem; solver_settings...)
+  @assert lowercase(settings[:solver]) in ["ecos", "cosmo", "mosek", "gurobi"]
+  #if lowercase(settings[:solver]) == "ecos"
+  #  error("Currently broken/slow, use 'jump' or `mosek` instead.")
+  #  sol = ECOS_solve(cone_problem; settings...)
+  if lowercase(settings[:solver]) == "cosmo"
+    sol = COSMO_solve(cone_problem; settings...)
+  elseif lowercase(settings[:solver]) in ["ecos", "mosek", "gurobi"]
+    sol = JuMP_solve(cone_problem; settings...)
+  else
+    error("Solver misspecified: [$(settings[:solver])] unknown")
   end
 
   ts = sol.x[(((Nc + M * (N - Nc)) * udim + M * N * xdim) + 1):end]
@@ -338,7 +337,6 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
 
   X, U = split_lqp_vars(probs, Nc, sol.x[1:((Nc + M * (N - Nc)) * udim + M * N * xdim)])
   @views if coerce
-    println("Coercing")
     ubar = mean(U[:, 1:Nc, :]; dims=3)[:, :, 1]
     for i in 1:M
       U[:, 1:Nc, i] .= ubar

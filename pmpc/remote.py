@@ -1,6 +1,6 @@
 import os, gc, random, pickle, signal, sys, time, traceback  # noqa: E401
 from argparse import ArgumentParser
-from multiprocessing import Process, Value
+from multiprocessing import Process, Value, set_start_method, get_start_method
 from typing import Optional, Callable, Union, Any, Dict, List, Tuple
 from socket import gethostname, gethostbyname
 import psutil
@@ -453,8 +453,14 @@ def solve_problems(
 
 
 ## module level access #############################################################################
-if __name__ == "__main__":
+def main():
     """Main routine."""
+    #try:
+    #    if get_start_method() == "fork":
+    #        set_start_method("spawn")
+    #except RuntimeError:
+    #    pass
+
     parser = ArgumentParser()
     parser.add_argument(
         "--port", "-p", type=int, default=DEFAULT_PORT, help="TCP port on which to start the server"
@@ -509,3 +515,6 @@ if __name__ == "__main__":
         for port, server in SERVERS.items():
             print(f"Stopping server on port {port}")
             server.stop()
+
+if __name__ == "__main__":
+    main()

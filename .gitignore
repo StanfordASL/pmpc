@@ -1,4 +1,5 @@
-pmpc/experimental/jax
+mosek.lic
+#pmpc/experimental/jax
 wheelhouse/*
 PMPC.jl/pmpcjl/share/*
 PMPC.jl/pmpcjl/lib/*

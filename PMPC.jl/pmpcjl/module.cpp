@@ -20,7 +20,7 @@ extern "C"
                        double *U_prev, double *Q, double *R, double *X_ref, double *U_ref,
                        double *lx, double *ux, double *lu, double *uu, double reg_x,
                        double reg_u, double *slew_reg, double *slew_reg0, double *slew_um1,
-                       long long verbose, double smooth_alpha);
+                       long long verbose, double smooth_alpha, char* solver);
 }
 
 namespace py = pybind11;
@@ -79,7 +79,7 @@ py::tuple lcone_solve(
     py::array_t<double> U_ref, py::array_t<double> lx, py::array_t<double> ux,
     py::array_t<double> lu, py::array_t<double> uu, double reg_x, double reg_u,
     py::array_t<double> slew_reg, py::array_t<double> slew_reg0,
-    py::array_t<double> slew_um1, long long verbose, double smooth_alpha)
+    py::array_t<double> slew_um1, long long verbose, double smooth_alpha, py::str solver)
 {
 
     py::array_t<double> X_out(xdim * N * M);
@@ -113,7 +113,8 @@ py::tuple lcone_solve(
         slew_reg0.mutable_data(), // slew_reg0
         slew_um1.mutable_data(),  // slew_um1
         verbose,                  // verbose
-        smooth_alpha              // smooth_alpha
+        smooth_alpha,             // smooth_alpha
+        (char*)solver.cast<std::string>().c_str()           // solver
     );
     return py::make_tuple(X_out, U_out);
 }

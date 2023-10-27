@@ -1,11 +1,25 @@
+[project]
+name = "pmpc"
+version = "0.7.0"
+authors = [
+  { name="Robert Dyro", email="rdyro@stanford.edu" },
+]
+description = "Python-interface Particle Sequential Convex Programming Model Predictive Control (SCP PMPC) interface."
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/StanfordASL/pmpc"
+"Bug Tracker" = "https://github.com/StanfordASL/pmpc/issues"
+
 [build-system]
-requires = ["setuptools", "pybind11"]
-#build-backend = "setuptools.build_meta"
+requires = ["setuptools", "pybind11", "julia"]
+build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 line-length=100
-
-[tool.cibuildwheel]
-before-all = "curl -fsSL https://install.julialang.org | sh -s -- --yes && ln -s /root/.juliaup/bin/julia /bin/julia"
-#before-build = "julia -e 'using InteractiveUtils; versioninfo()' && rm -rf PMPC.jl/build/* && julia PMPC.jl/scripts/build_pmpc_lib.jl && julia -e 'println(VERSION)'"
-build-verbosity=3

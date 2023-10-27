@@ -44,27 +44,33 @@ function setup!(solver::JuMPSolver{T}; solver_settings...)::Bool where {T}
   get!(solver_settings, :verbose, false)
   get!(solver_settings, :smooth_cstr, "")
   get!(solver_settings, :smooth_alpha, 1e0)
-  #get!(solver_settings, :solver_name, "Mosek")
-  get!(solver_settings, :solver_name, "ECOS")
+  get!(solver_settings, :solver, "ecos")
 
   solver.z_sol = get(solver_settings, :z_sol, nothing)
   solver.tu_sol = get(solver_settings, :tu_sol, nothing)
   solver.tl_sol = get(solver_settings, :tl_sol, nothing)
 
   # select the solver
-  if lowercase(solver_settings[:solver_name]) == "mosek"
-    @assert false, "Mosek not supported"
-    #solver.model =
-    #  JuMP.Model(optimizer_with_attributes(Mosek.Optimizer, "QUIET" => !solver_settings[:verbose]))
-  elseif lowercase(solver_settings[:solver_name]) == "ecos"
+  println("Using $(solver_settings[:solver]) solver")
+  display(solver_settings)
+  if lowercase(solver_settings[:solver]) == "mosek"
+    #@assert false, "Mosek not supported"
+    solver.model = JuMP.Model(Mosek.Optimizer)
+    set_attribute(model, "QUIET", !solver_settings[:verbose])
+  elseif lowercase(solver_settings[:solver]) == "ecos"
     solver.model = JuMP.Model(ECOS.Optimizer)
-    set_optimizer_attribute(solver.model, "verbose", solver_settings[:verbose])
-  elseif lowercase(solver_settings[:solver_name]) == "osqp"
-    solver.model =
-      JuMP.Model(optimizer_with_attributes(OSQP.Optimizer, "verbose" => !solver_settings[:verbose]))
-    set_optimizer_attribute(solver.model, "verbose", solver_settings[:verbose])
+    #set_optimizer_attribute(solver.model, "verbose", solver_settings[:verbose])
+    set_attribute(solver.model, "verbose", solver_settings[:verbose])
+  elseif lowercase(solver_settings[:solver]) == "gurobi"
+    solver.model = JuMP.Model(Gurobi.Optimizer)
+    #set_optimizer_attribute(solver.model, "verbose", solver_settings[:verbose])
+    set_attribute(solver.model, "verbose", solver_settings[:verbose])
+  #elseif lowercase(solver_settings[:solver]) == "osqp"
+  #  solver.model =
+  #    JuMP.Model(optimizer_with_attributes(OSQP.Optimizer, "verbose" => !solver_settings[:verbose]))
+  #  set_optimizer_attribute(solver.model, "verbose", solver_settings[:verbose])
   else
-    error("Solver $(solver_settings[:solver_name]) not supported")
+    error("Solver $(solver_settings[:solver]) not supported")
   end
 
   # set solver dimensions and main solution variable z = (U, X)

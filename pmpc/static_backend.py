@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional, Tuple, Union
 from copy import copy
-import ctypes
+import math
 
 import numpy as np
 
@@ -8,15 +8,16 @@ from .import_pmpcjl import import_pmpcjl
 from .utils import atleast_nd, to_numpy_f64
 from . import julia_utils as ju
 
-
-try:
-    pmpcjl = import_pmpcjl()
-except:
-    pmpcjl = None
+pmpcjl = None
 
 
 def is_precompiled_backend_available():
     global pmpcjl
+    if pmpcjl is None:
+        try:
+            pmpcjl = import_pmpcjl()
+        except:
+            pmpcjl = None
     return pmpcjl is not None
 
 
@@ -126,6 +127,7 @@ def lcone_solve(
     slew_um1,
     smooth_alpha=1e1,
     verbose=False,
+    solver="ecos",
 ):
     assert x0.ndim == 2
     xdim, M = x0.shape
@@ -182,13 +184,14 @@ def lcone_solve(
         slew_um1,
         int(verbose),
         float(smooth_alpha),
+        solver,
     )
     X, U = pmpcjl.lcone_solve(*args)
     X, U = np.reshape(X, (M, N, xdim)), np.reshape(U, (M, N, udim))
     return X, U
 
 
-#JULIA_SOLVE_FNS = dict(qp=lqp_solve, cone=lcone_solve)
+# JULIA_SOLVE_FNS = dict(qp=lqp_solve, cone=lcone_solve)
 JULIA_SOLVE_FNS = dict(cone=lcone_solve)
 
 
@@ -214,6 +217,7 @@ def aff_solve(
     solver_settings: Optional[Dict[str, Any]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Any]:
     """Solve a single instance of a linearized MPC problem."""
+    is_precompiled_backend_available()
     assert pmpcjl is not None
 
     f = atleast_nd(f, 3)
@@ -236,9 +240,14 @@ def aff_solve(
     ]
     x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref = args
     solver_settings.setdefault("solver", "ecos")
-    if "smooth_cstr" in solver_settings or "smooth_alpha" in solver_settings:
+    assert solver_settings["solver"].lower() in ("ecos", "gurobi", "mosek", "cosmo", "osqp")
+    if (
+        solver_settings["solver"].lower() in ("ecos", "gurobi", "mosek", "cosmo")
+        or "smooth_cstr" in solver_settings
+        or "smooth_alpha" in solver_settings
+    ):
         method = "cone"
-        smooth_alpha = solver_settings.get("smooth_alpha", 1e0)
+        smooth_alpha = solver_settings.get("smooth_alpha", math.nan)
     else:
         method = "qp"
         smooth_alpha = None
@@ -250,7 +259,7 @@ def aff_solve(
     x_u = np.nan * np.zeros_like(X_prev) if x_u is None or x_u.size == 0 else x_u
     u_l = np.nan * np.zeros_like(U_prev) if u_l is None or u_l.size == 0 else u_l
     u_u = np.nan * np.zeros_like(U_prev) if u_u is None or u_u.size == 0 else u_u
-    slew_reg = slew_rate * np.ones_like(x0[0, :])
+    slew_reg = (math.nan if slew_rate is None else slew_rate) * np.ones_like(x0[0, :])
     slew_reg0 = (
         np.nan * np.zeros((x0.shape[-1],))
         if "slew_reg" not in solver_settings
@@ -261,6 +270,10 @@ def aff_solve(
         if u_slew is None
         else ju.py2jl(to_numpy_f64(atleast_nd(u_slew, 2)), 1)
     )
+    x0, f, fx, fu, X_prev, U_prev = [z.astype(np.float64) for z in [x0, f, fx, fu, X_prev, U_prev]]
+    Q, R, X_ref, U_ref = [z.astype(np.float64) for z in [Q, R, X_ref, U_ref]]
+    x_l, x_u, u_l, u_u = [z.astype(np.float64) for z in [x_l, x_u, u_l, u_u]]
+    slew_reg, slew_reg0, slew_um1 = [z.astype(np.float64) for z in [slew_reg, slew_reg0, slew_um1]]
 
     args = (
         Nc,
@@ -285,10 +298,15 @@ def aff_solve(
         slew_um1,
     )
 
-    #X, U = solve_fn(*args, verbose=solver_settings.get("verbose", False))
+    # X, U = solve_fn(*args, verbose=solver_settings.get("verbose", False))
     if method == "qp":
         X, U = lqp_solve(*args, verbose=solver_settings.get("verbose", False))
     else:
-        X, U = lcone_solve(*args, smooth_alpha, verbose=solver_settings.get("verbose", False))
+        X, U = lcone_solve(
+            *args,
+            smooth_alpha,
+            verbose=solver_settings.get("verbose", False),
+            solver=solver_settings["solver"],
+        )
     X_traj, U_traj = np.concatenate([x0.swapaxes(-1, -2)[:, None, :], X], -2), U
     return X_traj, U_traj, dict()

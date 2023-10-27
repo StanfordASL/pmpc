@@ -68,7 +68,7 @@ function unwrap_args(
     settings[:slew_um1] = slew_um1
     settings[:slew_reg0] = slew_reg0
   end
-  settings[:solver_settings] = Dict{Symbol, Any}(:verbose => verbose)
+  settings[:verbose] = Bool(verbose)
 
   return args, settings
 end
@@ -172,6 +172,7 @@ Base.@ccallable function c_lcone_solve(
   slew_um1::Ptr{Cdouble},
   verbose::Clonglong,
   smooth_alpha::Cdouble,
+  solver::Cstring,
 )::Cvoid
   (x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref), settings = unwrap_args(
     xdim,
@@ -202,6 +203,7 @@ Base.@ccallable function c_lcone_solve(
   )
   settings[:smooth_alpha] = smooth_alpha
   settings[:smooth_cstr] = "logbarrier"
+  settings[:solver] = unsafe_string(solver)
 
   X, U, _ = lcone_solve(
     make_probs(x0, f, fx, fu, X_prev, U_prev, Q, R, X_ref, U_ref; settings...);

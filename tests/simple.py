@@ -2,8 +2,8 @@ import sys, os, sys
 
 import matplotlib.pyplot as plt, numpy as np
 
-dirname = os.path.abspath(os.path.dirname(__file__))
-sys.path = [os.path.join(dirname, "..")] + sys.path
+#dirname = os.path.abspath(os.path.dirname(__file__))
+#sys.path = [os.path.join(dirname, "..")] + sys.path
 import pmpc
 
 dirname = os.path.abspath(os.path.dirname(__file__))
@@ -17,7 +17,7 @@ def f_fx_fu_fn(X_prev, U_prev):
 
 
 if __name__ == "__main__":
-    M, N, xdim, udim = 1, 30, 4, 2
+    M, N, xdim, udim = 1, 25, 4, 2
 
     Q = np.tile(np.eye(xdim), (N, 1, 1))
     R = np.tile(1e-2 * np.eye(udim), (N, 1, 1))
@@ -29,30 +29,32 @@ if __name__ == "__main__":
     opts = dict(verbose=True, u_l=u_l, u_u=u_u)
     args = (f_fx_fu_fn, Q, R, x0, X_ref, U_ref, X_prev, U_prev)
 
-    for solver in ["ecos", "osqp", "cosmo"]:
-        #ret = pmpc.tune_scp(*args, **opts)
-        #opts["reg_x"], opts["reg_u"] = ret
-        opts["solver_settings"] = dict(solver=solver)
-        X, U, data = pmpc.solve(*args, max_it=100, **opts)
-        #X, U = X[0], U[0]
+    for _ in range(2):
+        for solver in ["osqp", "ecos", "cosmo", "mosek"]:
+            #ret = pmpc.tune_scp(*args, **opts)
+            #opts["reg_x"], opts["reg_u"] = ret
+            print(f"\n{solver}\n")
+            opts["solver_settings"] = dict(solver=solver, verbose=False)
+            X, U, data = pmpc.solve(*args, max_it=100, **opts)
+            #X, U = X[0], U[0]
 
-        #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)
-        #opts["reg_x"], opts["reg_u"] = ret
-        #X, U, data = pmpc.accelerated_scp_solve(*args, max_iters=100, **opts)
-        #X, U = X[0], U[0]
+            #ret = pmpc.tune_scp(*args, solve_fn=pmpc.accelerated_scp_solve, **opts)
+            #opts["reg_x"], opts["reg_u"] = ret
+            #X, U, data = pmpc.accelerated_scp_solve(*args, max_iters=100, **opts)
+            #X, U = X[0], U[0]
 
-        plt.figure()
-        plt.title(solver)
-        for r in range(xdim):
-            plt.plot(X[:, r], label="$x_%d$" % (r + 1))
-        plt.legend()
-        plt.tight_layout()
+            plt.figure()
+            plt.title(solver)
+            for r in range(xdim):
+                plt.plot(X[:, r], label="$x_%d$" % (r + 1))
+            plt.legend()
+            plt.tight_layout()
 
-        plt.figure()
-        plt.title(solver)
-        for r in range(udim):
-            plt.plot(U[:, r], label="$u_%d$" % (r + 1))
-        plt.legend()
-        plt.tight_layout()
+            plt.figure()
+            plt.title(solver)
+            for r in range(udim):
+                plt.plot(U[:, r], label="$u_%d$" % (r + 1))
+            plt.legend()
+            plt.tight_layout()
 
-    plt.show()
+    #plt.show()

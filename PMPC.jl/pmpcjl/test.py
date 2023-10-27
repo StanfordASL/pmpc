@@ -158,6 +158,7 @@ def lcone_solve(
         slew_um1,
         int(verbose),
         1e1,
+        "ecos"
     )
     X, U = np.reshape(X, (M, N, xdim)), np.reshape(U, (M, N, udim))
     return X, U
@@ -225,8 +226,8 @@ if __name__ == "__main__":
     )
 
     t = time.time()
-    lqp_solve(*args, verbose=False)
-    lcone_solve(*args, verbose=False)
+    lqp_solve(*args, verbose=True)
+    lcone_solve(*args, verbose=True)
     t = time.time() - t
     print(f"First compute time:  {t:.4e} s")
 
