@@ -1,47 +1,38 @@
 # install the libraries required for this build script #############################################
 using Pkg, InteractiveUtils
-Pkg.add("PackageCompiler")
+try
+  using PackageCompiler
+catch
+  Pkg.add("PackageCompiler")
+end
 using PackageCompiler
 
-# remove existing package name resolution ##########################################################
+# potentially install the library ##################################################################
 PMPC_path = joinpath(@__DIR__, "..")
 PMPC_pkg = Pkg.PackageSpec(path=PMPC_path)
-manifest_path = joinpath(PMPC_path, "Manifest.toml") # handle any Julia version
-try
-  rm(manifest_path)
-catch e
-end
-
-# fix and install the PMPC development dependencies ################################################
-third_party_path = joinpath(@__DIR__, "..", "..", "third_party")
-#println("Running fixes for Mosek_jll")
-#include(joinpath(@__DIR__, "..", "..", "third_party", "Mosek_jll", "deps", "build.jl"))
-#Pkg.develop(PackageSpec(path=joinpath(third_party_path, "Mosek_jll")))
-#Pkg.develop(PackageSpec(path=joinpath(third_party_path, "Mosek.jl")))
-
-# install the PMPC package #########################################################################
-#Pkg.activate(joinpath(third_party_path, "Mosek.jl"))
-#Pkg.develop(Pkg.PackageSpec(url="https://github.com/rdyro/Mosek_jll.jl"))
-#Pkg.resolve()
-Pkg.activate(PMPC_path)
-#Pkg.develop(PackageSpec(path=joinpath(third_party_path, "Mosek_jll")))
-Pkg.develop(Pkg.PackageSpec(path=joinpath(third_party_path, "Mosek.jl")))
-Pkg.resolve()
-Pkg.instantiate()
-Pkg.precompile()
-Pkg.activate()
-Pkg.develop(PMPC_pkg)
-
-# potentially updatedb to find extra dynamic libraries #############################################
-try
-  run(`updatedb`)
-catch e
-end
-
-# potentially build the library ####################################################################
 pmpc_lib_path = joinpath(@__DIR__, "..", "build", "pmpc_lib_$(VERSION)")
 pmpcjl_path = joinpath(@__DIR__, "..", "pmpcjl")
+
 if !isdir(pmpc_lib_path)
+  # install the PMPC package #########################################################################
+  cp(joinpath(PMPC_path, "Manifest_1.6.7.toml"), joinpath(PMPC_path, "Manifest.toml"); force=true)
+  if parse(Bool, get(ENV, "PMPC_STATIC_INSTALL", "false")) # we're building for a potentially different Julia version
+    rm(joinpath(PMPC_path, "Manifest.toml"), force=true)
+    Pkg.activate(PMPC_path)
+    Pkg.develop(Pkg.PackageSpec(path=joinpath(PMPC_path, "..", "third_party", "MosekTools.jl")))
+    Pkg.resolve()
+    Pkg.instantiate()
+    Pkg.activate()
+  end
+  Pkg.develop(PMPC_pkg)
+  Pkg.precompile()
+
+  # potentially updatedb to find extra dynamic libraries #############################################
+  try
+    run(`updatedb`)
+  catch
+  end
+
   if !isdir(joinpath(PMPC_path, "build"))
     mkdir(joinpath(PMPC_path, "build"))
   end
@@ -70,7 +61,7 @@ for extra_lib in extra_libs
     println("Copying $location")
     try
       cp(location, joinpath(pmpc_lib_path, "lib", "julia", splitpath(location)[end]), force=true)
-    catch e
+    catch
     end
   end
 end

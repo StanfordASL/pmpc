@@ -14,14 +14,14 @@ export lqp_solve, lcone_solve, lqp_generate_problem_matrices
 export rollout, dynamics_violation, make_prob, make_probs
 export PMPCs_ctrl, MPCs_ctrl
 
-using LinearAlgebra, SparseArrays, Printf, Base.Threads
+using LinearAlgebra, SparseArrays, Printf, Base.Threads, Statistics
 using OSQP
 using REPL
 using JuMP, MathOptInterface, ECOS, COSMO
 const MOI = MathOptInterface
-using Infiltrator, PrecompileTools
-using Gurobi
-using MosekTools # not currently supported
+using PrecompileTools
+#using Gurobi # not currently supported
+using MosekTools 
 
 include("types.jl")
 

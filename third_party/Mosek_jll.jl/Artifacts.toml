@@ -1,0 +1,34 @@
+[[Mosek]]
+arch = "aarch64"
+git-tree-sha1 = "d42130fe2c431ad61532e39163218dbafccc6de8"
+os = "macos"
+
+    [[Mosek.download]]
+    sha256 = "1819be23bb3ed2318b075bfe5f7c9935993a760509e7213c7150ae0465f75da8"
+    url = "https://github.com/rdyro/Mosek_jll.jl/releases/download/Mosek-v0.0.1+0/Mosek.v0.0.1.aarch64-apple-darwin.tar.gz"
+[[Mosek]]
+arch = "aarch64"
+git-tree-sha1 = "77c8dcda7d8a37c1abc71713c6bc8f5f19914892"
+libc = "glibc"
+os = "linux"
+
+    [[Mosek.download]]
+    sha256 = "9be0631a84d3ec8b4015390f6f39b2a038e02802ad9cf2e78637ec7418ba7b40"
+    url = "https://github.com/rdyro/Mosek_jll.jl/releases/download/Mosek-v0.0.1+0/Mosek.v0.0.1.aarch64-linux-gnu.tar.gz"
+[[Mosek]]
+arch = "x86_64"
+git-tree-sha1 = "ff6b5c1fb8503a0443db96cf13b65331fbb13fd5"
+os = "macos"
+
+    [[Mosek.download]]
+    sha256 = "abe38900bb30b34e85a5f1de9fa3a9c26b0dfd81c204c3eae30d50f487a3df80"
+    url = "https://github.com/rdyro/Mosek_jll.jl/releases/download/Mosek-v0.0.1+0/Mosek.v0.0.1.x86_64-apple-darwin.tar.gz"
+[[Mosek]]
+arch = "x86_64"
+git-tree-sha1 = "0e64326a2442583484553fdfa6590d5fa0d7a4ce"
+libc = "glibc"
+os = "linux"
+
+    [[Mosek.download]]
+    sha256 = "3b0ce375127ffc22eb2f4474cce3e71fd8f332adad8cfe535d5559f8db15dee9"
+    url = "https://github.com/rdyro/Mosek_jll.jl/releases/download/Mosek-v0.0.1+0/Mosek.v0.0.1.x86_64-linux-gnu.tar.gz"

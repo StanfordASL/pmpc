@@ -1,4 +1,4 @@
-using SparseArrays, LinearAlgebra
+using LinearAlgebra, SparseArrays
 using PMPC
 
 add_dim(x, M) = repeat(x; inner=vcat(fill(1, ndims(x)), [M]))

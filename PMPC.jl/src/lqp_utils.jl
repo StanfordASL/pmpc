@@ -1,6 +1,3 @@
-##^# library imports ###########################################################
-using Base.Threads
-##$#############################################################################
 ##^# large QP; P, q ############################################################
 function lqp_repr_Pq(probs::AA{OCProb{T}, 1}, Nc::Integer; settings...) where {T}
   xdim, udim, N, M = probs[1].xdim, probs[1].udim, probs[1].N, length(probs)

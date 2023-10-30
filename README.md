@@ -9,7 +9,7 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
 - [Table of Contents](#table-of-contents)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
-  - [Installation Requirements](#installation-requirements)
+  - [Installation from Source](#installation-from-source)
   - [(Optional) Obtaining (a dynamically linked version of) Python](#optional-obtaining-a-dynamically-linked-version-of-python)
   - [Compilation Times and a Persistent Solver Process](#compilation-times-and-a-persistent-solver-process)
   - [Obtaining Julia](#obtaining-julia)
@@ -34,12 +34,23 @@ optimization capability, support for arbitrary constraints and arbitrary cost.
   - [Solver selection](#solver-selection)
 - [Particle (consensus/contingency) optimization](#particle-consensuscontingency-optimization)
 - [Warm-start support](#warm-start-support)
+- [Citing This Work](#citing-this-work)
 
 # Quick Start
 
 Take a look at `examples/simple_demo.ipynb`.
 
 # Installation
+
+We offer precompiled binaries for Linux and MacOS (x86_64 and aarch64) via [PyPI](https://pypi.org/project/pmpc/).
+
+```bash
+$ pip install pmpc
+```
+
+*Even precompiled binaries have some startup time, so time only the second run of the solver.*
+
+## Installation from Source
 
 Installation can be done by cloning this repository and issuing `pip install .`
 
@@ -49,11 +60,9 @@ $ cd pmpc
 $ pip install .
 ```
 
-## Installation Requirements
-
 We **require** that
 - you must have [julia](https://julialang.org/) in your system `PATH`
-- Julia version is `{1.6, 1.7, 1.8, 1.9}`
+- Julia version is `1.6+`
 
 We **highly recommend** that
 - obtain a dynamically linked Python 

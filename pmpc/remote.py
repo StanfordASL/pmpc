@@ -143,10 +143,10 @@ def precompilation_call():
     p.f_fx_fu_fn = linear_dynamics_f_fx_fu_fn
     p.u_l, p.u_u = -10 * np.ones((p.N, p.udim)), 10 * np.ones((p.N, p.udim))
     solver_settings = copy(p.solver_settings)
-    for solver in ["ecos", "osqp", "jump"]:
+    for solver in ["ecos", "osqp"]:
         for smooth in [True, False]:
             p.solver_settings = dict(solver_settings, solver=solver)
-            if smooth and solver in ["ecos", "jump"]:
+            if smooth and solver in ["ecos"]:
                 p.solver_settings = dict(p.solver_settings, smooth_cstr="logbarrier", smooth_alpha=1e1)
             try:
                 solve_(**p)

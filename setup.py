@@ -8,8 +8,9 @@ from subprocess import check_call
 import pybind11
 from setuptools import Extension, find_packages, setup
 from setuptools.command.build_ext import build_ext
-from setuptools.command.develop import develop
-from setuptools.command.install import install
+#from setuptools.command.develop import develop
+#from setuptools.command.install import install
+from setuptools.command.build_py import build_py
 
 ####################################################################################################
 ####################################################################################################
@@ -19,7 +20,7 @@ from setuptools.command.install import install
 def _install_common(kw):
     setup(
         name="pmpc",
-        version="0.7.0",
+        version="0.7.1",
         packages=find_packages(),
         install_requires=[
             "numpy",
@@ -43,7 +44,9 @@ def _install_common(kw):
 
 
 def install_dynamic():
-    sys.path.insert(0, str(Path(__file__).absolute().parent / "PMPC.jl" / "scripts"))
+    sys.path.insert(
+        0, str(Path(__file__).absolute().parent / "PMPC.jl" / "scripts")
+    )
     from tools import (
         get_julia_version,
         install_package_julia_version,
@@ -80,32 +83,43 @@ def install_dynamic():
 
         print("Installing the PMPC package...")
         install_package_julia_version()
-        #try:
+        # try:
         #    print(f"Julia version = {get_julia_version()}")
         #    install_package_julia_version()
         #    # make_sysimage()
-        #except Exception as e:
+        # except Exception as e:
         #    print(e)
         #    pass
 
     # taken from https://stackoverflow.com/questions/20288711/post-install-script-with-python-setuptools
-    class PostDevelopCommand(develop):
-        """Post-installation for development mode."""
+    #class PostDevelopCommand(develop):
+    #    """Post-installation for development mode."""
 
-        def run(self):
-            install_julia_package()
-            develop.run(self)
+    #    def run(self):
+    #        install_julia_package()
+    #        develop.run(self)
 
-    class PostInstallCommand(install):
+    #class PostInstallCommand(install):
+    #    """Post-installation for installation mode."""
+
+    #    def run(self):
+    #        install_julia_package()
+    #        install.run(self)
+
+    class PostBuildPyCommand(build_py):
         """Post-installation for installation mode."""
 
         def run(self):
             install_julia_package()
-            install.run(self)
+            build_py.run(self)
 
     _install_common(
         dict(
-            cmdclass=dict(develop=PostDevelopCommand, install=PostInstallCommand),
+            cmdclass=dict(
+                #develop=PostDevelopCommand,
+                #install=PostInstallCommand,
+                build_py=PostBuildPyCommand,
+            ),
         )
     )
 
@@ -153,7 +167,7 @@ def install_static():
 
     _install_common(
         dict(
-            cmdclass={"build_ext": BuildPMPCjl},
+            cmdclass=dict(build_ext=BuildPMPCjl),
             ext_modules=[pmpcjl_ext],
             package_dir={"pmpcjl": "PMPC.jl/pmpcjl"},
             package_data={"": lib_paths + share_paths},
@@ -162,5 +176,7 @@ def install_static():
 
 
 if __name__ == "__main__":
-    #install_dynamic()
-    install_static()
+    if os.environ.get("PMPC_STATIC_INSTALL", False):
+        install_static()
+    else:
+        install_dynamic()

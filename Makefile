@@ -1,11 +1,32 @@
 ################################################################################
 docker_cmd := podman
 
+# Get the system's architecture
+ARCH := $(shell uname -m)
+# Get the system type
+OS := $(shell uname -s)
+
+all:
+ifeq ($(ARCH),aarch64)
+ifeq ($(OS),Linux)
+container_image := fedora:37
+else ifeq ($(OS),Darwin)
+container_image := ""
+endif
+else ifeq ($(ARCH),x86_64)
+ifeq ($(OS),Linux)
+container_image := quay.io/pypa/manylinux_2_28_x86_64
+else ifeq ($(OS),Darwin)
+container_image := ""
+endif
+endif
+
 all:
 	echo "Nothing to do"
 
 
 _wheels_build_cmd:
+	mkdir -p ./wheelhouse
 	$(docker_cmd) run\
 		--rm\
 		-v ./wheelhouse:/project/wheelhouse\
@@ -25,8 +46,11 @@ clean:
 	rm -rf PMPC.jl/pmpcjl/pmpc.egg-info
 	rm -rf PMPC.jl/pmpcjl/*.so
 
-container: clean
-	$(docker_cmd) build --build-arg ARCH=$(shell uname -m) -t pmpc .
+container:
+	$(docker_cmd) build\
+		--build-arg IMAGE=$(container_image)\
+		--build-arg ARCH=$(shell uname -m)\
+		-t pmpc .
 
 is_pmpc_container_built := $(shell podman images | grep pmpc)
 ifeq ($(is_pmpc_container_built),)

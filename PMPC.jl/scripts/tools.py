@@ -41,16 +41,13 @@ def install_package_julia_version(julia_runtime: Optional[PathT] = None) -> None
     assert julia_runtime is not None
     version = get_julia_version(julia_runtime)
 
-    # copy the trace file ######################################################
-
-    # run Julia within Python to fix the precompile file #######################
-    if not DISABLE_PRECOMPILATION:
-        trace_path = pmpc_path / "src" / "traces" / f"trace_{version}.jl"
-        shutil.copy(Path(__file__).absolute().parent / f"trace_{version}.jl", trace_path)
-        precompile_file = Path(__file__).absolute().parents[1] / "src" / "precompile.jl"
-        if precompile_file.exists():
-            os.remove(precompile_file)
-        python_prog = f"""
+    # install the final package ################################################
+#    julia_prog = f"""
+#using Pkg
+#Pkg.develop(PackageSpec(path="{str(pmpc_path)}"))
+#    """
+#    check_call([julia_runtime, "-e", julia_prog])
+    python_prog = f"""
 import julia
 julia.install()
 from julia import Julia
@@ -62,34 +59,8 @@ except:
 from julia import Main as jl
 jl.using("Pkg")
 jl.eval('Pkg.develop(PackageSpec(path="{str(pmpc_path)}"))')
-jl.eval('Pkg.add("PackageCompiler")')
-jl.using("PackageCompiler")
-jl.eval('Pkg.activate("{str(pmpc_path)}")')
-jl.eval('Pkg.instantiate()')
-jl.eval('Pkg.resolve()')
-jl.include("{str(compilation_utils_path)}")
-jl.fix_tracefile("{str(trace_path)}")
-    """
-        check_call([sys.executable, "-c", python_prog])
-
-        julia_prog = f"""
-include("{str(compilation_utils_path)}")
-fix_tracefile("{str(trace_path)}")
-    """
-        check_call([julia_runtime, "-e", julia_prog])
-        # copy the now fixed precompile file #######################################
-        shutil.copy(
-            pmpc_path / "src" / "traces" / f"trace_{version}.jl", pmpc_path / "src" / "precompile.jl"
-        )
-        shutil.copy(pmpc_path / "versions" / f"Manifest.toml_{version}", pmpc_path / "Manifest.toml")
-        shutil.copy(pmpc_path / "versions" / f"Project.toml_{version}", pmpc_path / "Project.toml")
-
-    # install the final package ################################################
-    julia_prog = f"""
-using Pkg
-Pkg.develop(PackageSpec(path="{str(pmpc_path)}"))
-    """
-    check_call([julia_runtime, "-e", julia_prog])
+"""
+    check_call([sys.executable, "-c", python_prog])
 
 
 ####################################################################################################

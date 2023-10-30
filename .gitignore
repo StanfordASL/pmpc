@@ -4,6 +4,7 @@ wheelhouse/*
 PMPC.jl/pmpcjl/share/*
 PMPC.jl/pmpcjl/lib/*
 PMPC.jl/build/*
+PMPC.jl/Manifest.toml
 tests/*svg
 tests/*png
 *.sh

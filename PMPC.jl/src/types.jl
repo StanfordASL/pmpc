@@ -1,4 +1,3 @@
-using LinearAlgebra, SparseArrays
 const AA = AbstractArray
 const SpMat = SparseMatrixCSC
 

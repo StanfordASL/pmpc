@@ -202,7 +202,6 @@ Base.@ccallable function c_lcone_solve(
     verbose,
   )
   settings[:smooth_alpha] = smooth_alpha
-  settings[:smooth_cstr] = "logbarrier"
   settings[:solver] = unsafe_string(solver)
 
   X, U, _ = lcone_solve(

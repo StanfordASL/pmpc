@@ -1,6 +1,6 @@
 [project]
 name = "pmpc"
-version = "0.7.0"
+version = "0.7.1"
 authors = [
   { name="Robert Dyro", email="rdyro@stanford.edu" },
 ]
@@ -11,6 +11,16 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "julia",
+    "zstandard",
+    "pyzmq",
+    "cloudpickle",
+    "redis",
+    "tqdm",
+    "psutil",
 ]
 
 [project.urls]

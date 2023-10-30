@@ -11,6 +11,7 @@ import platform
 
 version_info = sys.version_info
 implementation = platform.python_implementation()
+machine = platform.machine()
 
 
 if __name__ == "__main__":
@@ -33,13 +34,35 @@ if __name__ == "__main__":
     wheel_names = [
         Path("wheelhouse") / f
         for f in os.listdir("wheelhouse")
-        if re.match(f"pmpc.*{exec_version}.*\.whl", f)
+        if re.match(f"pmpc.*{exec_version}.*{machine}.*\\.whl", f)
     ]
-    extra_libs_to_exclude = ["libgfortran.so"] + [f"libgfortran.so.{i}" for i in range(30)]
-    cmd = (
-        [sys.executable, "-m", "auditwheel", "repair"]
+    extra_libs_to_exclude = ["libgfortran.so"] + [
+        f"libgfortran.so.{i}" for i in range(30)
+    ]
+    repair_versions = [
+        f"manylinux_2_28_{machine}",
+        f"manylinux_2_31_{machine}",
+        f"manylinux_2_34_{machine}",
+        f"manylinux_2_35_{machine}",
+    ]
+    cmd_stem = (
+        [
+            sys.executable,
+            "-m",
+            "auditwheel",
+            "repair",
+        ]
         + sum([["--exclude", fname.name] for fname in files], [])
-        + sum([["--exclude", extra_lib] for extra_lib in extra_libs_to_exclude], [])
+        + sum(
+            [["--exclude", extra_lib] for extra_lib in extra_libs_to_exclude],
+            [],
+        )
     )
     for wheel in wheel_names:
-        check_call(cmd + [str(wheel)])
+        for repair_version in repair_versions:
+            cmd = cmd_stem + ["--plat", repair_version]
+            try:
+                check_call(cmd + [str(wheel)])
+                break
+            except:
+                pass

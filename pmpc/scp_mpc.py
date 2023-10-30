@@ -7,6 +7,7 @@ import time
 from copy import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from multiprocessing import Pool
+from warnings import warn
 
 import numpy as np
 
@@ -117,6 +118,11 @@ def aff_solve(
             u_u,
             solver_settings,
         )
+    msg = (
+        "You are using a python-only version of this package, system Julia will be used. "
+        + "Ensure you have the PMPC.jl package installed in your system Julia."
+    )
+    warn(msg)
 
     """Solve a single instance of a linearized MPC problem."""
     ensure_julia()

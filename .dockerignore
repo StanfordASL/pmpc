@@ -1,1 +1,4 @@
 wheelhouse/*
+PMPC.jl/build/*
+PMPC.jl/pmpcjl/lib/*
+PMPC.jl/pmpcjl/share/*

@@ -1,6 +1,3 @@
-#### library imports ###########################################################
-using Statistics, Printf
-
 #### utils #########################################################################################
 function make_probs(
   x0::AA{T, 2},
@@ -288,6 +285,8 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
         cone_problem;
         extra_cstr=(size(G_left, 1), Int[], 0, G_left, G_right, h, c_left, c_right),
       )
+    else
+      error("Unknown smoothing method: [$(settings[:smooth_cstr])]")
     end
 
     # incorporate extra, ad hoc constraints
@@ -308,7 +307,7 @@ function lcone_solve(probs::AA{OCProb{T}, 1}; settings...) where {T}
         G_left, G_right = vcat(G_left[l+1:end, :], G_left_new), G_right_new
         h = vcat(h[l+1:end], h_new)
         l, e = 0, e + div(size(G_left_new, 1), 3)
-        c_right = ones(siGurobize(G_right, 2))
+        c_right = ones(size(G_right, 2))
       end
       augment_cone_problem!(
         cone_problem;
